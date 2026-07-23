@@ -1,5 +1,29 @@
+// Determine socket server target (supports Vercel hybrid deployment)
+let socketServerUrl = window.location.origin;
+const savedBackendUrl = localStorage.getItem('system_taha_backend_url');
+
+if (window.location.hostname.includes('vercel.app')) {
+    const box = document.getElementById('server-url-box');
+    const input = document.getElementById('custom-backend-input');
+    const btnSave = document.getElementById('btn-save-backend');
+    
+    if (box) box.style.display = 'flex';
+    if (input) input.value = savedBackendUrl || '';
+    if (savedBackendUrl) socketServerUrl = savedBackendUrl;
+
+    if (btnSave) {
+        btnSave.addEventListener('click', () => {
+            const val = input.value.trim();
+            if (val) {
+                localStorage.setItem('system_taha_backend_url', val);
+                window.location.reload();
+            }
+        });
+    }
+}
+
 // Establish Socket.io Connection
-const socket = io();
+const socket = io(socketServerUrl, { transports: ['websocket', 'polling'] });
 
 // DOM Elements
 const connectionDot = document.getElementById('connection-dot');
@@ -11,7 +35,7 @@ const sheetRangeInput = document.getElementById('sheet-range');
 const messageTemplateInput = document.getElementById('message-template');
 const rangeFromInput = document.getElementById('range-from');
 const rangeToInput = document.getElementById('range-to');
-const safetyDelayInput = document.getElementById('safety-delay');
+const safetyDelayInput = document.getElementById('range-delay');
 
 const btnPreview = document.getElementById('btn-preview');
 const btnStart = document.getElementById('btn-start');
@@ -66,7 +90,7 @@ if (spreadsheetIdInput) {
         }
     });
 
-    spreadsheetIdInput.addEventListener('paste', (e) => {
+    spreadsheetIdInput.addEventListener('paste', () => {
         setTimeout(() => {
             const val = spreadsheetIdInput.value;
             const extracted = extractSpreadsheetId(val);
@@ -254,14 +278,13 @@ async function fetchGoogleSheetRecords() {
         return false;
     }
 
-    // Update input field to show extracted clean ID
     spreadsheetIdInput.value = spreadsheetId;
 
     if (btnPreview) btnPreview.disabled = true;
     addLog(`Fetching Google Sheet records (ID: ${spreadsheetId})...`, 'system');
 
     try {
-        const response = await fetch('/api/preview-sheet', {
+        const response = await fetch(`${socketServerUrl}/api/preview-sheet`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ spreadsheetId, range })
@@ -305,7 +328,7 @@ function addLog(message, type = 'default') {
 
 // Socket.io Events: WhatsApp status
 socket.on('whatsapp-status', (data) => {
-    const { status, qr, qrDataUrl } = data;
+    const { status, qrDataUrl } = data;
     
     connectionDot.className = 'status-dot';
     connectionRadar.className = 'pulse-radar';
@@ -388,7 +411,7 @@ socket.on('job-status', (data) => {
         addLog(log, logType);
     }
 
-    if (type === 'start' || type === 'sync' && job.isRunning) {
+    if (type === 'start' || (type === 'sync' && job.isRunning)) {
         jobControls.style.display = 'block';
         btnStart.disabled = true;
         
@@ -508,7 +531,6 @@ btnStart.addEventListener('click', async () => {
         return;
     }
 
-    // Auto-fetch if in Google Sheet mode and no records loaded yet
     if (activeSourceMode === 'sheet' && slicedBatchRecords.length === 0) {
         const fetched = await fetchGoogleSheetRecords();
         if (!fetched || slicedBatchRecords.length === 0) {
@@ -533,7 +555,7 @@ btnStart.addEventListener('click', async () => {
     addLog(`Starting batch sending (#${fromIdx} to #${toIdx})...`, 'system');
 
     try {
-        const response = await fetch('/api/send-custom-list', {
+        const response = await fetch(`${socketServerUrl}/api/send-custom-list`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

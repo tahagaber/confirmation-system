@@ -1,291 +1,227 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Taha - WhatsApp Bulk Sender</title>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <!-- Main Stylesheet -->
+    <title>System Taha - WhatsApp Bulk Messaging Dashboard</title>
     <link rel="stylesheet" href="style.css">
-    <!-- QR Code Generator & SheetJS Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <!-- SheetJS for parsing Excel/CSV locally -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- Socket.io -->
     <script src="/socket.io/socket.io.js"></script>
-    <style>
-        .source-tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 14px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding-bottom: 8px;
-        }
-        .source-tab {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #94a3b8;
-            padding: 8px 14px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .source-tab.active {
-            background: rgba(16, 185, 129, 0.2);
-            border-color: #10b981;
-            color: #10b981;
-        }
-        .file-upload-zone {
-            border: 2px dashed #334155;
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-            background: rgba(15, 23, 42, 0.6);
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-bottom: 12px;
-        }
-        .file-upload-zone:hover {
-            border-color: #10b981;
-            background: rgba(16, 185, 129, 0.05);
-        }
-        .file-upload-zone p {
-            color: #cbd5e1;
-            font-size: 0.9rem;
-            margin-top: 6px;
-        }
-        .file-upload-zone span {
-            color: #64748b;
-            font-size: 0.75rem;
-        }
-        .range-config-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1.2fr;
-            gap: 10px;
-            margin-bottom: 14px;
-            background: rgba(15, 23, 42, 0.5);
-            padding: 12px;
-            border-radius: 10px;
-            border: 1px solid #334155;
-        }
-        .range-config-row label {
-            font-size: 0.78rem;
-            color: #94a3b8;
-            font-weight: 700;
-            display: block;
-            margin-bottom: 4px;
-        }
-        .range-config-row input {
-            width: 100%;
-            padding: 8px 10px;
-            background: #0b1120;
-            border: 1px solid #334155;
-            border-radius: 6px;
-            color: #fff;
-            font-weight: 700;
-        }
-    </style>
 </head>
 <body>
-    <div class="glass-bg-decor one"></div>
-    <div class="glass-bg-decor two"></div>
 
+    <!-- App Header -->
     <header class="app-header">
         <div class="logo-container">
             <div class="pulse-radar" id="connection-radar"></div>
             <div>
                 <h1>System Taha</h1>
-                <p class="subtitle">WhatsApp Bulk Messaging & Anti-Spam Suite</p>
+                <span class="subtitle">WhatsApp Bulk Sender Engine</span>
             </div>
         </div>
-        <div class="connection-status-badge" id="connection-status-container">
-            <span class="status-dot disconnected" id="connection-dot"></span>
-            <span class="status-text" id="connection-text">Checking Status...</span>
+
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <!-- Server URL Config (for Vercel hybrid deployment) -->
+            <div id="server-url-box" style="display: none; align-items: center; gap: 0.5rem; background: #1f2937; padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid #374151;">
+                <label style="font-size: 0.75rem; color: #9ca3af; font-weight: 700;">BACKEND SERVER:</label>
+                <input type="text" id="custom-backend-input" placeholder="http://localhost:3000" style="background: #0b0f19; border: 1px solid #374151; color: #fff; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.8rem; width: 180px;">
+                <button id="btn-save-backend" class="btn btn-primary" style="padding: 0.3rem 0.7rem; font-size: 0.75rem;">Connect</button>
+            </div>
+
+            <div class="connection-status-badge">
+                <span class="status-dot disconnected" id="connection-dot"></span>
+                <span id="connection-text">Connecting to Server...</span>
+            </div>
         </div>
     </header>
 
+    <!-- Main Dashboard -->
     <main class="dashboard-grid">
-        <!-- Configuration Card -->
-        <section class="card config-card">
-            <h2>System Configuration</h2>
-            <p class="card-desc">Load contacts, set batch ranges, and customize anti-ban delay parameters.</p>
-            
-            <!-- Source Selector Tabs -->
+
+        <!-- Left Column: Source & Message Config -->
+        <div class="card">
+            <h2>Messaging Setup</h2>
+            <p class="card-desc">Configure recipient data source, safety delays, batch ranges, and customized messages.</p>
+
+            <!-- Input Source Selection Tabs -->
             <div class="source-tabs">
-                <button class="source-tab active" onclick="switchSource('file', this)">📁 Upload Excel / CSV</button>
-                <button class="source-tab" onclick="switchSource('text', this)">✏️ Paste Contacts</button>
+                <button class="source-tab active" onclick="switchSource('file', this)">📁 Upload File (Excel / CSV)</button>
+                <button class="source-tab" onclick="switchSource('text', this)">📝 Direct Paste</button>
                 <button class="source-tab" onclick="switchSource('sheet', this)">🌐 Google Sheet URL</button>
             </div>
 
-            <form id="config-form" onsubmit="return false;">
-                <!-- Option 1: File Upload -->
-                <div id="section-file" class="input-source-section">
-                    <div class="file-upload-zone" onclick="document.getElementById('excel-file-input').click()">
-                        <div style="font-size: 2rem;">📥</div>
-                        <p>Click here to upload Excel or CSV file</p>
-                        <span>Supports (.xlsx, .xls, .csv) - Col A: Name, Col B: Phone Number</span>
-                        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display:none;" onchange="handleFileUpload(event)">
-                    </div>
-                </div>
-
-                <!-- Option 2: Manual Text Paste -->
-                <div id="section-text" class="input-source-section" style="display:none;">
-                    <div class="input-group">
-                        <label for="manual-paste-area">Paste Contacts (Name, Phone)</label>
-                        <textarea id="manual-paste-area" rows="4" placeholder="Ahmed, 01012345678&#10;Mohamed, 01298765432"></textarea>
-                        <span class="input-tip">One contact per line: Name, Phone Number</span>
-                    </div>
-                    <button type="button" class="btn btn-secondary" onclick="parseManualText()" style="margin-bottom: 12px;">Load Contacts From Text</button>
-                </div>
-
-                <!-- Option 3: Google Sheet ID -->
-                <div id="section-sheet" class="input-source-section" style="display:none;">
-                    <div class="input-group">
-                        <label for="spreadsheet-id">Google Sheet URL or ID</label>
-                        <input type="text" id="spreadsheet-id" placeholder="Paste Google Sheet URL or ID here...">
-                    </div>
-                    <div class="input-group">
-                        <label for="sheet-range">Sheet Range</label>
-                        <input type="text" id="sheet-range" value="Sheet1!A:C">
-                    </div>
-                    <button type="button" id="btn-preview" class="btn btn-secondary" style="margin-bottom: 12px;">Fetch Google Sheet Records</button>
-                </div>
-
-                <!-- Range / Batch Selection & Anti-Ban Delay Config -->
-                <div class="range-config-row">
-                    <div>
-                        <label for="range-from">From Contact #</label>
-                        <input type="number" id="range-from" value="1" min="1" onchange="applyRangeFilter()">
-                    </div>
-                    <div>
-                        <label for="range-to">To Contact #</label>
-                        <input type="number" id="range-to" value="15" min="1" onchange="applyRangeFilter()">
-                    </div>
-                    <div>
-                        <label for="safety-delay">Safety Delay (Sec)</label>
-                        <input type="number" id="safety-delay" value="8" min="3" max="60">
-                    </div>
-                </div>
-
-                <!-- Common Message Template Input -->
-                <div class="input-group">
-                    <label for="message-template">Message Template (Use <strong>{name}</strong> for dynamic personalization)</label>
-                    <textarea id="message-template" rows="4" placeholder="Hello {name}, thank you for contacting System Taha..."></textarea>
-                </div>
-
-                <div class="button-row">
-                    <button type="button" id="btn-start" class="btn btn-primary" disabled>🚀 Start Batch Sending</button>
-                </div>
-            </form>
-
-            <div class="control-panel" id="job-controls" style="display: none;">
-                <h3>Active Batch Controls</h3>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
-                </div>
-                <div class="progress-text-row">
-                    <span id="progress-percentage">0% Completed</span>
-                    <span id="progress-counts">0 / 0 Messages</span>
-                </div>
-                <div class="btn-group">
-                    <button type="button" id="btn-pause" class="btn btn-warning">Pause</button>
-                    <button type="button" id="btn-resume" class="btn btn-success" style="display: none;">Resume</button>
-                    <button type="button" id="btn-stop" class="btn btn-danger">Stop Process</button>
+            <!-- Source 1: File Upload -->
+            <div id="section-file" class="input-source-section">
+                <div class="file-upload-zone" onclick="document.getElementById('excel-file-input').click()">
+                    <p style="font-size: 1.5rem; margin-bottom: 0.5rem;">📊</p>
+                    <p style="font-weight: 700; color: var(--text-primary);">Click to upload Excel or CSV file</p>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.2rem;">Column 1: Phone / Column 2: Name (or vice versa)</p>
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileUpload(event)">
                 </div>
             </div>
-        </section>
 
-        <!-- QR Code & Status Summary Card -->
-        <section class="card qr-status-card" id="qr-container">
-            <h2>WhatsApp Link</h2>
+            <!-- Source 2: Direct Text Paste -->
+            <div id="section-text" class="input-source-section" style="display: none;">
+                <div class="input-group">
+                    <label>Paste Contact List (Name, Phone per line):</label>
+                    <textarea id="manual-paste-area" rows="4" placeholder="Ahmed, 01000000000&#10;Mohamed, 01100000000"></textarea>
+                    <button class="btn btn-secondary" onclick="parseManualText()" style="margin-top: 0.5rem; width: 100%;">Parse Text List</button>
+                </div>
+            </div>
+
+            <!-- Source 3: Google Sheet -->
+            <div id="section-sheet" class="input-source-section" style="display: none;">
+                <div class="input-group">
+                    <label>Google Sheet URL or Spreadsheet ID:</label>
+                    <input type="text" id="spreadsheet-id" placeholder="Paste full Google Sheet link here...">
+                </div>
+
+                <div class="input-group">
+                    <label>Sheet Range (Defaults to Column A to C):</label>
+                    <input type="text" id="sheet-range" value="Sheet1!A:C" placeholder="Sheet1!A:C">
+                </div>
+
+                <button class="btn btn-secondary" id="btn-preview" style="width: 100%; margin-bottom: 1rem;">
+                    🔄 Fetch Google Sheet Records
+                </button>
+            </div>
+
+            <!-- Range Slicing & Delay Controls -->
+            <div class="range-config-row">
+                <div>
+                    <label>From Contact #</label>
+                    <input type="number" id="range-from" value="1" min="1" onchange="applyRangeFilter()">
+                </div>
+                <div>
+                    <label>To Contact #</label>
+                    <input type="number" id="range-to" value="15" min="1" onchange="applyRangeFilter()">
+                </div>
+                <div>
+                    <label>Safety Delay (Sec)</label>
+                    <input type="number" id="range-delay" value="8" min="3" id="safety-delay">
+                </div>
+            </div>
+
+            <!-- Message Template -->
+            <div class="input-group">
+                <label>Message Template (Use {name} for Dynamic Personalization):</label>
+                <textarea id="message-template" rows="4" placeholder="السلام عليكم يا {name}"></textarea>
+            </div>
+
+            <button class="btn btn-primary" id="btn-start" style="width: 100%; padding: 1.1rem;" disabled>
+                🚀 Start Batch Sending
+            </button>
+
+            <!-- Job Controls (Pause / Resume / Stop) -->
+            <div id="job-controls" style="display: none; margin-top: 1rem;">
+                <div style="display: flex; gap: 0.8rem;">
+                    <button class="btn btn-warning" id="btn-pause" style="flex: 1;">⏸️ Pause</button>
+                    <button class="btn btn-success" id="btn-resume" style="flex: 1; display: none;">▶️ Resume</button>
+                    <button class="btn btn-danger" id="btn-stop" style="flex: 1;">⏹️ Cancel Job</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Status & QR Authentication -->
+        <div class="card qr-status-card">
+            <h2>WhatsApp Connection</h2>
             <p class="card-desc">Scan QR code using Linked Devices on your phone.</p>
-            
-            <div class="qr-placeholder" id="qr-placeholder-element">
-                <img id="qr-image" src="" alt="QR Code" style="display:none;">
-                <canvas id="qr-canvas" style="display:none;"></canvas>
+
+            <div class="qr-placeholder">
+                <img id="qr-image" style="display: none;" alt="WhatsApp QR Code">
+                <canvas id="qr-canvas" style="display: none;"></canvas>
+
                 <div class="qr-loading-overlay" id="qr-loading-overlay">
                     <div class="spinner"></div>
-                    <p>Generating session QR code...</p>
+                    <span>Generating session QR code...</span>
                 </div>
+
                 <div class="qr-success-overlay" id="qr-success-overlay" style="display: none;">
                     <div class="check-icon">✓</div>
-                    <p>Connected & Authenticated</p>
+                    <span>Connected & Authenticated</span>
                 </div>
             </div>
-            <p class="qr-instructions" id="qr-instruction-text">Scan this code using WhatsApp Linked Devices on your phone.</p>
-        </section>
 
-        <!-- Stats Grid Card -->
-        <section class="card stats-card" id="stats-container">
-            <h2>Real-time Progress</h2>
-            <p class="card-desc">Live overview of active batch queue.</p>
-            
+            <p style="font-size: 0.85rem; color: var(--text-secondary);" id="qr-instruction-text">
+                Scan this code using WhatsApp Linked Devices on your phone.
+            </p>
+
+            <!-- Anti-Spam Safety Banner -->
+            <div class="delay-banner" id="delay-banner" style="display: none; width: 100%;">
+                <span id="delay-message">Anti-Spam Delay Active...</span>
+            </div>
+        </div>
+
+        <!-- Full Width: Progress & Live Stats -->
+        <div class="card stats-card">
+            <h2>Live Progress</h2>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="progress-fill"></div>
+            </div>
+            <div class="progress-text-row">
+                <span id="progress-percentage">0% Completed</span>
+                <span id="progress-counts">0 / 0 Messages</span>
+            </div>
+
             <div class="stats-grid">
                 <div class="stat-box">
-                    <span class="stat-value" id="stat-total">0</span>
-                    <span class="stat-label">Batch Total</span>
+                    <div class="stat-value" id="stat-total">0</div>
+                    <div class="stat-label">Total Batch Contacts</div>
                 </div>
                 <div class="stat-box sent">
-                    <span class="stat-value" id="stat-sent">0</span>
-                    <span class="stat-label">Sent Successfully</span>
+                    <div class="stat-value" id="stat-sent">0</div>
+                    <div class="stat-label">Successfully Sent</div>
                 </div>
                 <div class="stat-box failed">
-                    <span class="stat-value" id="stat-failed">0</span>
-                    <span class="stat-label">Failed / Errors</span>
+                    <div class="stat-value" id="stat-failed">0</div>
+                    <div class="stat-label">Failed</div>
                 </div>
                 <div class="stat-box skipped">
-                    <span class="stat-value" id="stat-skipped">0</span>
-                    <span class="stat-label">Skipped (Dup/Name/Phone)</span>
+                    <div class="stat-value" id="stat-skipped">0</div>
+                    <div class="stat-label">Skipped (Duplicates)</div>
                 </div>
             </div>
+        </div>
 
-            <!-- Wait Delay Alert -->
-            <div class="delay-banner" id="delay-banner" style="display: none;">
-                <div class="pulse-ring"></div>
-                <span id="delay-message">Safety Delay: Waiting before next message...</span>
-            </div>
-        </section>
-
-        <!-- Console / Logs Card -->
-        <section class="card console-card">
-            <h2>System Activity Console</h2>
+        <!-- Full Width: Live Terminal Console Logs -->
+        <div class="card console-card">
+            <h2>Live Log Console</h2>
             <div class="console-box" id="console-logs">
-                <div class="log-line system">[System Taha] Initialized. Ready to load contacts...</div>
+                <div class="log-line system">[System] Waiting for user actions...</div>
             </div>
-        </section>
+        </div>
 
-        <!-- Teachers Table List Card -->
-        <section class="card table-card">
-            <h2>Batch Queue Contacts</h2>
-            <p class="card-desc">Review records selected for the current batch range.</p>
-            
+        <!-- Full Width: Contacts Table View -->
+        <div class="card table-card">
+            <h2>Batch Recipient List</h2>
             <div class="table-wrapper">
                 <table class="teachers-table">
                     <thead>
                         <tr>
-                            <th>#</th>
-                            <th>Contact Name</th>
-                            <th>Phone Number</th>
-                            <th>Delivery Status</th>
+                            <th># Row</th>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody id="teachers-table-body">
                         <tr>
-                            <td colspan="4" class="empty-table-msg">No contacts loaded yet. Upload Excel or load contacts above.</td>
+                            <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                No records loaded yet. Upload an Excel file or paste text list.
+                            </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-        </section>
+        </div>
+
     </main>
 
     <footer class="app-footer">
-        <p>&copy; 2026 System Taha - WhatsApp Bulk Sender Pro. All rights reserved.</p>
+        <p>System Taha — Anti-Spam Bulk WhatsApp Messaging System &copy; 2026</p>
     </footer>
+
     <script src="app.js"></script>
 </body>
 </html>
