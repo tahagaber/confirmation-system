@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #10b981;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      margin: 0;
+      padding: 16px;
+      direction: ltr;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .header h2 {
+      font-size: 1.1rem;
+      margin: 0;
+      color: var(--accent);
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 14px;
+      border: 1px solid #334155;
+    }
+    label {
+      font-size: 0.8rem;
+      color: var(--text-sub);
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: block;
+    }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background: #0b1120;
+      border: 1px solid #334155;
+      color: var(--text-main);
+      border-radius: 6px;
+      padding: 8px;
+      font-family: inherit;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .btn {
+      background: var(--accent);
+      color: #000;
+      font-weight: 800;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+    }
+    .badge {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .badge.pending { background: #334155; color: #cbd5e1; }
+    .badge.skipped { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+    .badge.sent { background: rgba(16, 185, 129, 0.2); color: var(--accent); }
+    .badge.failed { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h2>System Taha</h2>
+      <span style="font-size: 0.75rem; color: #94a3b8;">WhatsApp Sender Pro</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="grid-2">
+      <div>
+        <label>From Row #</label>
+        <input type="number" id="from-row" value="1" min="1" onchange="loadRecords()">
+      </div>
+      <div>
+        <label>To Row #</label>
+        <input type="number" id="to-row" value="15" min="1" onchange="loadRecords()">
+      </div>
+    </div>
+
+    <div style="margin-bottom: 10px;">
+      <label>Safety Delay (Seconds)</label>
+      <input type="number" id="safety-delay" value="8" min="3">
+    </div>
+
+    <div style="margin-bottom: 10px;">
+      <label>Message Template ({name})</label>
+      <textarea id="template" rows="3">Hello {name}, thank you for contacting System Taha...</textarea>
+    </div>
+
+    <button class="btn" onclick="startSending()">🚀 Start Batch Sending</button>
+  </div>
+
+  <div class="card">
+    <label>Batch Queue Preview</label>
+    <div id="queue-list" style="max-height: 200px; overflow-y: auto; font-size: 0.8rem;">
+      Loading records...
+    </div>
+  </div>
+
+  <script>
+    let currentContacts = [];
+
+    function loadRecords() {
+      const fromRow = parseInt(document.getElementById('from-row').value) || 1;
+      const toRow = parseInt(document.getElementById('to-row').value) || 15;
+
+      google.script.run.withSuccessHandler(function(res) {
+        if (!res.success) {
+          document.getElementById('queue-list').innerHTML = `<div style="color:red;">${res.message}</div>`;
+          return;
+        }
+
+        currentContacts = res.contacts;
+        let html = '';
+        currentContacts.forEach(c => {
+          let badgeClass = 'pending';
+          if (c.status.startsWith('Skipped')) badgeClass = 'skipped';
+          else if (c.status.startsWith('Sent')) badgeClass = 'sent';
+
+          html += `<div style="padding:4px 0; border-bottom:1px solid #334155; display:flex; justify-size:space-between;">
+            <span>#${c.rowIndex} <strong>${c.name}</strong> (${c.phone})</span>
+            <span class="badge ${badgeClass}">${c.status}</span>
+          </div>`;
+        });
+
+        document.getElementById('queue-list').innerHTML = html;
+      }).getContactsData(fromRow, toRow);
+    }
+
+    function startSending() {
+      alert('System Taha: To send WhatsApp messages automatically with live status, open the dashboard at http://localhost:3000');
+    }
+
+    loadRecords();
+  </script>
+</body>
+</html>

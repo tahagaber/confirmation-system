@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment and Credentials
+.env
+*.json
+!package.json
+!package-lock.json
+!vercel.json
+
+# WhatsApp Local Auth & Session Cache
+.wwebjs_auth/
+.wwebjs_cache/
+
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
