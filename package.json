@@ -4,7 +4,10 @@
   "description": "Bulk WhatsApp messaging system from Google Sheets with beautiful dashboard and live status syncing.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "login:firebase": "npx firebase-tools login",
+    "deploy:firebase": "npx firebase-tools deploy --only hosting",
+    "deploy:vercel": "npx vercel"
   },
   "dependencies": {
     "cors": "^2.8.5",

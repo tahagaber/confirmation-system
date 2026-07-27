@@ -171,18 +171,33 @@ function normalizePhoneNumber(phone) {
     return cleaned + '@c.us';
 }
 
-// Helper: Fetch Rows
+// Helper: Fetch Rows (Fast Public CSV first, Service Account fallback)
 async function fetchRowsAnyWay(spreadsheetId, range) {
     try {
+        const rows = await fetchPublicSheetCsv(spreadsheetId);
+        if (rows && rows.length > 0) return rows;
+    } catch (e) {
+        console.log('Public CSV fetch failed, falling back to Service Account...', e.message);
+    }
+    try {
         const sheets = getSheetsClient();
-        const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: range || 'Sheet1!A:C' });
+        let sheetTitle = 'Sheet1';
+        try {
+            const meta = await sheets.spreadsheets.get({ spreadsheetId });
+            if (meta.data && meta.data.sheets && meta.data.sheets.length > 0) {
+                sheetTitle = meta.data.sheets[0].properties.title;
+            }
+        } catch (mErr) {}
+
+        const targetRange = range || `'${sheetTitle}'!A:Z`;
+        const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: targetRange });
         if (response.data.values && response.data.values.length > 0) {
             return response.data.values;
         }
     } catch (e) {
-        console.log('Service account missing/unconfigured, trying Public CSV fallback...', e.message);
+        console.log('Service Account fetch failed:', e.message);
     }
-    return await fetchPublicSheetCsv(spreadsheetId);
+    return [];
 }
 
 // Background Bulk Messaging Loop
@@ -229,16 +244,35 @@ async function runBulkSender() {
         }
 
         try {
-            const personalizedMessage = currentJob.messageTemplate.replace(/{name}/gi, item.name);
-            await wwebClient.sendMessage(wwebJid, personalizedMessage);
+            // Support Spintax {Hello|Hi|Greetings} and {name} template variables
+            let personalizedMessage = parseSpintax(currentJob.messageTemplate);
+            personalizedMessage = personalizedMessage.replace(/{name}/gi, item.name);
             
-            item.status = 'Sent';
-            currentJob.sent++;
-            console.log(`Successfully sent to ${item.name}`);
-            io.emit('job-status', { type: 'progress', job: currentJob, log: `✅ Successfully sent to ${item.name} (${item.phone})` });
+            // Check if phone number is registered on WhatsApp if client provides method
+            let isRegistered = true;
+            try {
+                if (typeof wwebClient.isRegisteredUser === 'function') {
+                    isRegistered = await wwebClient.isRegisteredUser(wwebJid);
+                }
+            } catch (regErr) {
+                console.log('User registration check skipped:', regErr.message);
+            }
+
+            if (!isRegistered) {
+                item.status = 'Failed (No WhatsApp)';
+                currentJob.failed++;
+                console.log(`Contact ${item.name} (${item.phone}) is not registered on WhatsApp.`);
+                io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ ${item.name} (${item.phone}): Number not on WhatsApp!` });
+            } else {
+                await wwebClient.sendMessage(wwebJid, personalizedMessage);
+                item.status = 'Sent';
+                currentJob.sent++;
+                console.log(`Successfully sent to ${item.name}`);
+                io.emit('job-status', { type: 'progress', job: currentJob, log: `✅ Successfully sent to ${item.name} (${item.phone})` });
+            }
         } catch (error) {
             console.error(`Error sending message to ${item.name}:`, error.message);
-            item.status = `Failed (${error.message})`;
+            item.status = `Failed (${error.message.includes('not registered') ? 'No WhatsApp' : error.message})`;
             currentJob.failed++;
             io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ Failed to send to ${item.name}: ${error.message}` });
         }
@@ -262,6 +296,144 @@ async function runBulkSender() {
         }
     }
 }
+
+// Helper: Parse Spintax {Option 1|Option 2|Option 3}
+function parseSpintax(text) {
+    if (!text) return '';
+    return text.replace(/\{([^{}]+)\}/g, (match, choices) => {
+        const options = choices.split('|');
+        if (options.length > 1) {
+            return options[Math.floor(Math.random() * options.length)].trim();
+        }
+        return match;
+    });
+}
+
+// REST Endpoint: Update Google Sheet Status & Comment
+app.post('/api/update-sheet-record', async (req, res) => {
+    const { spreadsheetId, sheetRowIndex, status, comment } = req.body;
+    if (!spreadsheetId || !sheetRowIndex) {
+        return res.status(400).json({ error: 'spreadsheetId and sheetRowIndex are required.' });
+    }
+
+    // Update in memory currentJob list if active
+    if (currentJob && currentJob.list) {
+        const target = currentJob.list.find(i => i.sheetRowIndex === parseInt(sheetRowIndex, 10));
+        if (target) {
+            if (status) target.status = status;
+            if (comment !== undefined) target.comment = comment;
+        }
+    }
+
+    try {
+        const sheets = getSheetsClient();
+        let targetRange = `C${sheetRowIndex}:D${sheetRowIndex}`;
+
+        try {
+            const meta = await sheets.spreadsheets.get({ spreadsheetId });
+            if (meta.data && meta.data.sheets && meta.data.sheets.length > 0) {
+                const sheetTitle = meta.data.sheets[0].properties.title;
+                targetRange = `'${sheetTitle}'!C${sheetRowIndex}:D${sheetRowIndex}`;
+            }
+        } catch (mErr) {
+            console.log('Sheet metadata fetch fallback:', mErr.message);
+        }
+
+        try {
+            await sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: targetRange,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: {
+                    values: [[status || '', comment || '']]
+                }
+            });
+        } catch (firstErr) {
+            console.log(`First update attempt (${targetRange}) failed:`, firstErr.message, '. Retrying with un-prefixed range...');
+            // Fallback: Retry with simple range without sheet title prefix
+            const simpleRange = `C${sheetRowIndex}:D${sheetRowIndex}`;
+            await sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: simpleRange,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: {
+                    values: [[status || '', comment || '']]
+                }
+            });
+            targetRange = simpleRange;
+        }
+
+        console.log(`Updated Sheet Row #${sheetRowIndex} (${targetRange}): Status="${status}", Comment="${comment}"`);
+        res.json({ success: true, message: `Sheet Row #${sheetRowIndex} updated successfully.` });
+    } catch (error) {
+        console.log('Google Sheet update error / fallback:', error.message);
+        if (error.message && (error.message.includes('does not have permission') || error.message.includes('403'))) {
+            return res.status(403).json({
+                success: false,
+                error: 'Google Sheet permission required: Click Share in your sheet and set to "Anyone with the link can Edit", or add confirmation@calls-502909.iam.gserviceaccount.com as Editor.'
+            });
+        }
+        res.json({ success: true, warning: 'Updated locally in app state.' });
+    }
+});
+
+// REST Endpoint: Send Single Test Message
+app.post('/api/send-single-message', async (req, res) => {
+    const { phone, name, message } = req.body;
+    if (!phone || !message) {
+        return res.status(400).json({ error: 'Phone number and message text are required.' });
+    }
+    if (wwebStatus !== 'ready') {
+        return res.status(400).json({ error: 'WhatsApp client is not connected.' });
+    }
+
+    const wwebJid = normalizePhoneNumber(phone);
+    if (!wwebJid) {
+        return res.status(400).json({ error: 'Invalid phone number format.' });
+    }
+
+    try {
+        let textToSend = parseSpintax(message);
+        textToSend = textToSend.replace(/{name}/gi, name || 'Customer');
+        
+        await wwebClient.sendMessage(wwebJid, textToSend);
+        console.log(`Single message sent to ${phone}`);
+        res.json({ success: true, message: `Test message sent successfully to ${phone}` });
+    } catch (err) {
+        console.error(`Single message failed for ${phone}:`, err.message);
+        res.status(500).json({ error: `Failed to send message: ${err.message}` });
+    }
+});
+
+// REST Endpoint: Logout / Reset WhatsApp Session
+app.post('/api/logout-whatsapp', async (req, res) => {
+    try {
+        wwebStatus = 'disconnected';
+        io.emit('whatsapp-status', { status: 'disconnected', reason: 'User requested session logout' });
+        
+        try {
+            await wwebClient.logout();
+        } catch (e) {
+            console.log('Client logout warning:', e.message);
+        }
+
+        console.log('Resetting WhatsApp client session...');
+        wwebStatus = 'connecting';
+        io.emit('whatsapp-status', { status: 'connecting' });
+        
+        setTimeout(() => {
+            wwebClient.initialize().catch(err => {
+                console.error('Failed to re-initialize WhatsApp client:', err);
+                wwebStatus = 'disconnected';
+                io.emit('whatsapp-status', { status: 'disconnected', error: err.message });
+            });
+        }, 2000);
+
+        res.json({ success: true, message: 'WhatsApp session reset initialized. New QR code incoming...' });
+    } catch (err) {
+        res.status(500).json({ error: err.message || 'Failed to logout WhatsApp session.' });
+    }
+});
 
 // REST Endpoints
 app.get('/api/status', (req, res) => {
@@ -322,10 +494,15 @@ app.post('/api/preview-sheet', async (req, res) => {
                 if (normName) seenNames.add(normName);
             }
 
+            const rawStatus = row[2] ? String(row[2]).trim() : '';
+            const rawComment = row[3] ? String(row[3]).trim() : '';
+
             records.push({
                 name,
                 phone,
                 status: rowStatus,
+                sheetStatus: rawStatus || 'Attending',
+                comment: rawComment || '',
                 sheetRowIndex: i + 1
             });
         }
