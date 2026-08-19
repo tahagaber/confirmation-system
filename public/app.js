@@ -253,13 +253,15 @@ function applyRangeFilter() {
     const seenNames = new Set();
 
     slicedBatchRecords.forEach((rec) => {
-        const normPhone = String(rec.phone).replace(/\D/g, '');
+        const isGroup = Boolean(rec.isGroup || (rec.phone && (rec.phone.includes('chat.whatsapp.com') || rec.phone.endsWith('@g.us'))));
+        rec.isGroup = isGroup;
+        const normPhone = isGroup ? rec.phone : String(rec.phone).replace(/\D/g, '');
         const normName = String(rec.name).trim().toLowerCase();
 
         if (rec.status && (rec.status.startsWith('Sent') || rec.status.startsWith('Failed') || rec.status.startsWith('Skipped'))) {
             // retain existing status
         } else if (seenPhones.has(normPhone)) {
-            rec.status = 'Skipped (Duplicate Phone)';
+            rec.status = isGroup ? 'Skipped (Duplicate Group)' : 'Skipped (Duplicate Phone)';
         } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز') {
             rec.status = 'Skipped (Duplicate Name)';
         } else {
@@ -306,16 +308,19 @@ function handleFileUpload(event) {
                 let name = row[0] ? String(row[0]).trim() : 'Customer';
                 let phone = row[1] ? String(row[1]).trim() : '';
 
-                if (String(row[0]).replace(/\D/g, '').length >= 8) {
+                const isCol0LinkOrPhone = String(row[0]).includes('chat.whatsapp.com') || String(row[0]).replace(/\D/g, '').length >= 8;
+                if (isCol0LinkOrPhone && String(row[1]).replace(/\D/g, '').length < 8 && !String(row[1]).includes('chat.whatsapp.com')) {
                     phone = String(row[0]).trim();
-                    name = row[1] ? String(row[1]).trim() : 'Customer';
+                    name = row[1] ? String(row[1]).trim() : 'Group / Contact';
                 }
 
                 if (phone) {
+                    const isGroup = phone.includes('chat.whatsapp.com') || phone.endsWith('@g.us');
                     allLoadedRecords.push({
                         sheetRowIndex: i + 1,
                         name: name,
                         phone: phone,
+                        isGroup: isGroup,
                         status: 'Pending Batch',
                         sheetStatus: 'Pending',
                         comment: ''
@@ -361,10 +366,12 @@ function parseManualText() {
         }
 
         if (phone) {
+            const isGroup = phone.includes('chat.whatsapp.com') || phone.endsWith('@g.us');
             allLoadedRecords.push({
                 sheetRowIndex: idx + 1,
                 name: name,
                 phone: phone,
+                isGroup: isGroup,
                 status: 'Pending Batch',
                 sheetStatus: 'Pending',
                 comment: ''
@@ -405,7 +412,7 @@ async function fetchGoogleSheetRecords() {
 
         allLoadedRecords = (data.records || []).map(r => ({
             ...r,
-            sheetStatus: r.status && r.status.includes('Sent') ? 'Attending' : 'Pending',
+            sheetStatus: r.sheetStatus || (r.status && r.status.includes('Sent') ? 'Attending' : 'Pending'),
             comment: r.comment || ''
         }));
 
@@ -601,11 +608,27 @@ function renderRecipientTable() {
         }
 
         const isIssue = item.status.includes('No WhatsApp') || item.status.includes('Failed') || item.status.includes('Invalid') || item.sheetStatus === 'Issue';
+        const isGroupItem = Boolean(item.isGroup || (item.phone && (item.phone.includes('chat.whatsapp.com') || item.phone.endsWith('@g.us'))));
 
         const firstLetter = (item.name && item.name.trim()) ? item.name.trim().charAt(0).toUpperCase() : '?';
         const avatarBg = isIssue 
             ? 'bg-gradient-to-tr from-rose-500/30 to-red-600/30 border-rose-500/40 text-rose-300'
-            : 'bg-gradient-to-tr from-emerald-500/20 to-teal-500/30 border-emerald-500/30 text-emerald-400';
+            : (isGroupItem 
+                ? 'bg-gradient-to-tr from-cyan-500/30 to-blue-600/30 border-cyan-500/40 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.15)]'
+                : 'bg-gradient-to-tr from-emerald-500/20 to-teal-500/30 border-emerald-500/30 text-emerald-400');
+
+        const avatarIcon = isGroupItem 
+            ? `<span class="material-symbols-outlined text-[18px]">groups</span>` 
+            : firstLetter;
+
+        const typeBadge = isGroupItem 
+            ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 uppercase tracking-wider">
+                <span class="material-symbols-outlined text-[12px]">groups</span> Group
+               </span>` 
+            : '';
+
+        const phoneIcon = isGroupItem ? 'groups' : 'call';
+        const phoneIconColor = isGroupItem ? 'text-cyan-400 opacity-90' : 'opacity-60';
 
         let selectColor = 'bg-surface-container/70 border-outline-variant/30 text-on-surface';
         if (item.sheetStatus === 'Attending') selectColor = 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 font-bold';
@@ -614,19 +637,20 @@ function renderRecipientTable() {
         else if (item.sheetStatus === 'Issue') selectColor = 'bg-rose-500/20 border-rose-500/50 text-rose-400 font-extrabold animate-pulse';
 
         return `
-            <tr class="hover:bg-surface-container-highest/30 transition-all duration-200 border-b border-outline-variant/10 ${isIssue ? 'bg-rose-950/20 border-l-4 border-l-rose-500' : ''}">
+            <tr class="hover:bg-surface-container-highest/30 transition-all duration-200 border-b border-outline-variant/10 ${isIssue ? 'bg-rose-950/20 border-l-4 border-l-rose-500' : (isGroupItem ? 'bg-cyan-950/10 border-l-2 border-l-cyan-500/40' : '')}">
                 <td class="px-5 py-4 font-mono font-extrabold text-on-surface-variant/80 text-xs">#${item.sheetRowIndex}</td>
                 <td class="px-5 py-4">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 rounded-full border ${avatarBg} flex items-center justify-center font-bold text-sm flex-shrink-0 shadow-sm">
-                            ${firstLetter}
+                            ${avatarIcon}
                         </div>
                         <div class="flex flex-col">
-                            <span class="font-bold text-on-surface text-sm tracking-tight flex items-center gap-1.5">
+                            <span class="font-bold text-on-surface text-sm tracking-tight flex items-center gap-2">
                                 ${item.name}
+                                ${typeBadge}
                             </span>
-                            <span class="font-mono text-[11px] text-on-surface-variant/80 flex items-center gap-1 mt-0.5">
-                                <span class="material-symbols-outlined text-[13px] opacity-60">call</span> ${item.phone}
+                            <span class="font-mono text-[11px] text-on-surface-variant/80 flex items-center gap-1 mt-0.5 truncate max-w-[220px]" title="${item.phone}">
+                                <span class="material-symbols-outlined text-[13px] ${phoneIconColor}">${phoneIcon}</span> ${item.phone}
                             </span>
                         </div>
                     </div>

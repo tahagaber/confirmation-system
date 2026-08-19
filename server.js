@@ -171,6 +171,113 @@ function normalizePhoneNumber(phone) {
     return cleaned + '@c.us';
 }
 
+// Helper: Check if input target is a WhatsApp Group (Link or JID)
+function isGroupTarget(phone) {
+    if (!phone) return false;
+    const str = String(phone).trim();
+    return str.includes('chat.whatsapp.com') || str.endsWith('@g.us');
+}
+
+// Helper: Resolve Target JID (Supports individual numbers and Group Links / Group JIDs)
+async function resolveTargetJid(phone) {
+    if (!phone) return null;
+    let input = String(phone).trim();
+
+    // 1. If it's a WhatsApp Group Link
+    if (input.includes('chat.whatsapp.com')) {
+        try {
+            const cleanInput = input.split('?')[0].split('#')[0].trim();
+            const match = cleanInput.match(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/);
+            const inviteCode = match ? match[1] : cleanInput.split('chat.whatsapp.com/')[1].split('/')[0];
+
+            if (inviteCode) {
+                console.log(`[Group Resolver] Attempting to resolve invite code: "${inviteCode}"...`);
+
+                // Try 1: getInviteInfo
+                if (wwebClient && typeof wwebClient.getInviteInfo === 'function') {
+                    try {
+                        const inviteInfo = await wwebClient.getInviteInfo(inviteCode);
+                        console.log('[Group Resolver] getInviteInfo output:', inviteInfo);
+                        if (inviteInfo) {
+                            if (typeof inviteInfo === 'string' && inviteInfo.includes('@g.us')) {
+                                return inviteInfo.endsWith('@g.us') ? inviteInfo : `${inviteInfo}@g.us`;
+                            }
+                            if (typeof inviteInfo.id === 'string') {
+                                return inviteInfo.id.endsWith('@g.us') ? inviteInfo.id : `${inviteInfo.id}@g.us`;
+                            }
+                            if (inviteInfo.id && inviteInfo.id._serialized) {
+                                return inviteInfo.id._serialized;
+                            }
+                            if (inviteInfo.id && inviteInfo.id.user) {
+                                return `${inviteInfo.id.user}@g.us`;
+                            }
+                            if (inviteInfo.gid) {
+                                const gidStr = typeof inviteInfo.gid === 'string' ? inviteInfo.gid : inviteInfo.gid.user;
+                                return gidStr.endsWith('@g.us') ? gidStr : `${gidStr}@g.us`;
+                            }
+                        }
+                    } catch (inviteErr) {
+                        console.log('[Group Resolver] getInviteInfo warning:', inviteErr.message);
+                    }
+                }
+
+                // Try 2: acceptInvite
+                if (wwebClient && typeof wwebClient.acceptInvite === 'function') {
+                    try {
+                        const groupId = await wwebClient.acceptInvite(inviteCode);
+                        console.log('[Group Resolver] acceptInvite output:', groupId);
+                        if (groupId) {
+                            if (typeof groupId === 'string') {
+                                return groupId.endsWith('@g.us') ? groupId : `${groupId}@g.us`;
+                            }
+                            if (groupId._serialized) return groupId._serialized;
+                            if (groupId.user) return `${groupId.user}@g.us`;
+                        }
+                    } catch (acceptErr) {
+                        console.log('[Group Resolver] acceptInvite warning:', acceptErr.message);
+                    }
+                }
+
+                // Try 3: Search existing joined group chats in WhatsApp client
+                if (wwebClient && typeof wwebClient.getChats === 'function') {
+                    try {
+                        const chats = await wwebClient.getChats();
+                        const groups = chats.filter(c => c.isGroup);
+                        console.log(`[Group Resolver] Searching across ${groups.length} active group chats...`);
+                        
+                        for (const group of groups) {
+                            if (!group || !group.id) continue;
+                            const groupJid = group.id._serialized || `${group.id.user}@g.us`;
+
+                            if (typeof group.getInviteCode === 'function') {
+                                try {
+                                    const code = await group.getInviteCode();
+                                    if (code === inviteCode) {
+                                        console.log('[Group Resolver] Matched group invite code via getInviteCode():', groupJid);
+                                        return groupJid;
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+                    } catch (chatErr) {
+                        console.log('[Group Resolver] getChats search warning:', chatErr.message);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error resolving group invite link:', err.message);
+        }
+    }
+
+    // 2. If it's already a Group JID (e.g., 120363048593849302@g.us)
+    if (input.endsWith('@g.us')) {
+        return input;
+    }
+
+    // 3. Fallback to standard individual phone normalization
+    return normalizePhoneNumber(input);
+}
+
 // Helper: Fetch Rows (Fast Public CSV first, Service Account fallback)
 async function fetchRowsAnyWay(spreadsheetId, range) {
     try {
@@ -231,15 +338,22 @@ async function runBulkSender() {
             continue;
         }
 
-        console.log(`Sending message to ${item.name} (${item.phone})...`);
-        io.emit('job-status', { type: 'progress', job: currentJob, log: `Sending message to ${item.name} (#${item.sheetRowIndex})...` });
+        const isGroup = item.isGroup || isGroupTarget(item.phone);
+        console.log(`Sending message to ${isGroup ? 'Group: ' : ''}${item.name} (${item.phone})...`);
+        io.emit('job-status', { type: 'progress', job: currentJob, log: `Sending message to ${isGroup ? 'Group: ' : ''}${item.name} (#${item.sheetRowIndex})...` });
 
-        const wwebJid = normalizePhoneNumber(item.phone);
+        let wwebJid = null;
+        if (isGroup) {
+            wwebJid = await resolveTargetJid(item.phone);
+        } else {
+            wwebJid = normalizePhoneNumber(item.phone);
+        }
+
         if (!wwebJid) {
-            item.status = 'Failed (Invalid Phone)';
+            item.status = isGroup ? 'Failed (Invalid Group Link)' : 'Failed (Invalid Phone)';
             currentJob.failed++;
             currentJob.currentIndex++;
-            io.emit('job-status', { type: 'progress', job: currentJob, log: `Contact #${item.sheetRowIndex}: Invalid phone number.` });
+            io.emit('job-status', { type: 'progress', job: currentJob, log: `Contact #${item.sheetRowIndex}: Invalid ${isGroup ? 'group link' : 'phone number'}.` });
             continue;
         }
 
@@ -248,14 +362,16 @@ async function runBulkSender() {
             let personalizedMessage = parseSpintax(currentJob.messageTemplate);
             personalizedMessage = personalizedMessage.replace(/{name}/gi, item.name);
             
-            // Check if phone number is registered on WhatsApp if client provides method
+            // Check if target is registered on WhatsApp (Only for individual chats, NOT groups)
             let isRegistered = true;
-            try {
-                if (typeof wwebClient.isRegisteredUser === 'function') {
-                    isRegistered = await wwebClient.isRegisteredUser(wwebJid);
+            if (!wwebJid.endsWith('@g.us')) {
+                try {
+                    if (typeof wwebClient.isRegisteredUser === 'function') {
+                        isRegistered = await wwebClient.isRegisteredUser(wwebJid);
+                    }
+                } catch (regErr) {
+                    console.log('User registration check skipped:', regErr.message);
                 }
-            } catch (regErr) {
-                console.log('User registration check skipped:', regErr.message);
             }
 
             if (!isRegistered) {
@@ -267,8 +383,8 @@ async function runBulkSender() {
                 await wwebClient.sendMessage(wwebJid, personalizedMessage);
                 item.status = 'Sent';
                 currentJob.sent++;
-                console.log(`Successfully sent to ${item.name}`);
-                io.emit('job-status', { type: 'progress', job: currentJob, log: `✅ Successfully sent to ${item.name} (${item.phone})` });
+                console.log(`Successfully sent to ${isGroup ? 'Group: ' : ''}${item.name}`);
+                io.emit('job-status', { type: 'progress', job: currentJob, log: `✅ Successfully sent to ${isGroup ? 'Group: ' : ''}${item.name} (${item.phone})` });
             }
         } catch (error) {
             console.error(`Error sending message to ${item.name}:`, error.message);
@@ -381,15 +497,22 @@ app.post('/api/update-sheet-record', async (req, res) => {
 app.post('/api/send-single-message', async (req, res) => {
     const { phone, name, message } = req.body;
     if (!phone || !message) {
-        return res.status(400).json({ error: 'Phone number and message text are required.' });
+        return res.status(400).json({ error: 'Phone number/Group link and message text are required.' });
     }
     if (wwebStatus !== 'ready') {
         return res.status(400).json({ error: 'WhatsApp client is not connected.' });
     }
 
-    const wwebJid = normalizePhoneNumber(phone);
+    const isGroup = isGroupTarget(phone);
+    let wwebJid = null;
+    if (isGroup) {
+        wwebJid = await resolveTargetJid(phone);
+    } else {
+        wwebJid = normalizePhoneNumber(phone);
+    }
+
     if (!wwebJid) {
-        return res.status(400).json({ error: 'Invalid phone number format.' });
+        return res.status(400).json({ error: `Invalid ${isGroup ? 'group link' : 'phone number'} format.` });
     }
 
     try {
@@ -397,8 +520,8 @@ app.post('/api/send-single-message', async (req, res) => {
         textToSend = textToSend.replace(/{name}/gi, name || 'Customer');
         
         await wwebClient.sendMessage(wwebJid, textToSend);
-        console.log(`Single message sent to ${phone}`);
-        res.json({ success: true, message: `Test message sent successfully to ${phone}` });
+        console.log(`Single message sent to ${isGroup ? 'Group' : 'Phone'} (${phone})`);
+        res.json({ success: true, message: `Test message sent successfully to ${isGroup ? 'Group' : phone}` });
     } catch (err) {
         console.error(`Single message failed for ${phone}:`, err.message);
         res.status(500).json({ error: `Failed to send message: ${err.message}` });
@@ -440,6 +563,27 @@ app.get('/api/status', (req, res) => {
     res.json({ whatsapp: wwebStatus, job: currentJob });
 });
 
+// REST Endpoint: Get User's Joined WhatsApp Groups
+app.get('/api/groups', async (req, res) => {
+    if (wwebStatus !== 'ready') {
+        return res.status(400).json({ error: 'WhatsApp client is not connected.' });
+    }
+
+    try {
+        const chats = await wwebClient.getChats();
+        const groups = chats
+            .filter(chat => chat.isGroup)
+            .map(group => ({
+                id: group.id._serialized,
+                name: group.name
+            }));
+
+        res.json({ success: true, groups });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch WhatsApp groups: ' + err.message });
+    }
+});
+
 // REST Endpoint: Preview Sheet
 app.post('/api/preview-sheet', async (req, res) => {
     const { spreadsheetId, range } = req.body;
@@ -465,7 +609,8 @@ app.post('/api/preview-sheet', async (req, res) => {
             const sampleRow = rows[startIndex];
             const valA = String(sampleRow[0] || '').replace(/\D/g, '');
             const valB = String(sampleRow[1] || '').replace(/\D/g, '');
-            if (valA.length >= 8 && valB.length < 8) {
+            const isAOrBGroup = isGroupTarget(sampleRow[0]) || isGroupTarget(sampleRow[1]);
+            if (!isAOrBGroup && valA.length >= 8 && valB.length < 8) {
                 phoneColIdx = 0;
                 nameColIdx = 1;
             }
@@ -474,20 +619,66 @@ app.post('/api/preview-sheet', async (req, res) => {
         for (let i = startIndex; i < rows.length; i++) {
             const row = rows[i];
             if (!row || row.length === 0) continue;
-            const name = row[nameColIdx] ? String(row[nameColIdx]).trim() : 'Customer';
-            const phone = row[phoneColIdx] ? String(row[phoneColIdx]).trim() : '';
 
-            if (!phone && !name) continue;
+            let name = '';
+            let phone = '';
+            let isGroup = false;
+
+            // 1. Scan entire row for WhatsApp group link
+            for (let c = 0; c < row.length; c++) {
+                const cellVal = row[c] ? String(row[c]).trim() : '';
+                if (isGroupTarget(cellVal)) {
+                    phone = cellVal;
+                    isGroup = true;
+                    // Extract name from another non-link cell in the same row
+                    for (let n = 0; n < row.length; n++) {
+                        if (n !== c && row[n]) {
+                            const possibleName = String(row[n]).trim();
+                            if (possibleName && !isGroupTarget(possibleName) && possibleName !== 'Attending' && possibleName !== 'Pending' && possibleName !== 'No Response' && possibleName !== 'Issue') {
+                                name = possibleName;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+
+            // 2. If no group link found in row cells, use column indices
+            if (!phone) {
+                let colA = row[0] ? String(row[0]).trim() : '';
+                let colB = row[1] ? String(row[1]).trim() : '';
+
+                if (!colA && !colB) continue;
+
+                name = row[nameColIdx] ? String(row[nameColIdx]).trim() : 'Customer';
+                phone = row[phoneColIdx] ? String(row[phoneColIdx]).trim() : '';
+
+                if (!phone && isGroupTarget(name)) {
+                    phone = name;
+                    name = 'جروب واتساب';
+                    isGroup = true;
+                }
+            }
+
+            if (!phone) continue;
+
+            if (isGroup || isGroupTarget(phone)) {
+                isGroup = true;
+                if (!name || name === 'Customer') {
+                    name = 'جروب واتساب';
+                }
+            }
 
             let rowStatus = 'Pending';
-            const wwebJid = normalizePhoneNumber(phone);
+            const wwebJid = isGroup ? phone : normalizePhoneNumber(phone);
             const normName = name.toLowerCase();
 
             if (!wwebJid) {
-                rowStatus = 'Invalid Phone';
+                rowStatus = isGroup ? 'Invalid Group Link' : 'Invalid Phone';
             } else if (seenPhones.has(wwebJid)) {
-                rowStatus = 'Skipped (Duplicate Phone)';
-            } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز') {
+                rowStatus = isGroup ? 'Skipped (Duplicate Group)' : 'Skipped (Duplicate Phone)';
+            } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز' && normName !== 'جروب واتساب') {
                 rowStatus = 'Skipped (Duplicate Name)';
             } else {
                 seenPhones.add(wwebJid);
@@ -500,6 +691,7 @@ app.post('/api/preview-sheet', async (req, res) => {
             records.push({
                 name,
                 phone,
+                isGroup,
                 status: rowStatus,
                 sheetStatus: rawStatus || 'Attending',
                 comment: rawComment || '',
@@ -538,14 +730,15 @@ app.post('/api/send-custom-list', async (req, res) => {
         const phone = rec.phone ? String(rec.phone).trim() : '';
         if (!phone) return;
 
-        const wwebJid = normalizePhoneNumber(phone);
+        const isGroup = isGroupTarget(phone) || Boolean(rec.isGroup);
+        const wwebJid = isGroup ? phone : normalizePhoneNumber(phone);
         const normName = name.toLowerCase();
         let status = 'Pending';
 
         if (!wwebJid) {
-            status = 'Failed (Invalid Phone)';
+            status = isGroup ? 'Failed (Invalid Group Link)' : 'Failed (Invalid Phone)';
         } else if (seenPhones.has(wwebJid)) {
-            status = 'Skipped (Duplicate Phone)';
+            status = isGroup ? 'Skipped (Duplicate Group)' : 'Skipped (Duplicate Phone)';
         } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز') {
             status = 'Skipped (Duplicate Name)';
         } else {
@@ -556,6 +749,7 @@ app.post('/api/send-custom-list', async (req, res) => {
         list.push({
             name,
             phone,
+            isGroup,
             status,
             sheetRowIndex: rec.sheetRowIndex || (list.length + 1)
         });
