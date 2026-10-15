@@ -87,7 +87,374 @@ const PRESET_TEMPLATES = {
     spintax: "{أهلاً بك|مرحباً|مرحبتين|عزيزنا} {name}، {يسعدنا تأكيد موعدك|نود تذكيرك بموعدك|نحييك ونأمل أن تكون بخير} 🎉"
 };
 
-// ==========================================
+// Cyclic Rotating Templates & Advanced Delay State
+let currentTemplateMode = typeof localStorage !== 'undefined' ? (localStorage.getItem('system_taha_template_mode') || 'rotating') : 'rotating';
+let currentDelayMode = typeof localStorage !== 'undefined' ? (localStorage.getItem('system_taha_delay_mode') || 'random') : 'random';
+let rotatingTemplates = [];
+
+try {
+    const savedRot = localStorage.getItem('system_taha_rotating_templates');
+    if (savedRot) {
+        rotatingTemplates = JSON.parse(savedRot);
+    }
+} catch (e) {
+    console.warn('Failed to parse saved rotating templates:', e);
+}
+
+if (!Array.isArray(rotatingTemplates) || rotatingTemplates.length === 0) {
+    rotatingTemplates = [
+        "أهلاً بك {name}، يسعدنا تأكيد موعدك معنا بنجاح! 🎉 يرجى العلم بضرورة الحضور قبل الموعد بـ 10 دقائق.",
+        "مرحباً {name}، نود إعلامك بتأكيد حجزك لدينا 🌟 في حال رغبتك بتعديل الميعاد يرجى مراسلتنا.",
+        "عزيزنا {name}، تم تسجيل بياناتك بنجاح ✅ فريقنا بانتظار تشريفك ونتمنى لك يوماً سعيداً!"
+    ];
+}
+
+let isBatchRestEnabled = localStorage.getItem('system_taha_batch_rest_enabled') === 'true';
+
+function saveSettingsToLocalStorage() {
+    try {
+        localStorage.setItem('system_taha_template_mode', currentTemplateMode);
+        localStorage.setItem('system_taha_delay_mode', currentDelayMode);
+        localStorage.setItem('system_taha_rotating_templates', JSON.stringify(rotatingTemplates));
+        localStorage.setItem('system_taha_batch_rest_enabled', isBatchRestEnabled ? 'true' : 'false');
+        
+        const minVal = document.getElementById('delay-min')?.value;
+        const maxVal = document.getElementById('delay-max')?.value;
+        const fixVal = document.getElementById('range-delay')?.value;
+        const restDur = document.getElementById('rest-duration')?.value;
+        const restFreq = document.getElementById('rest-frequency')?.value;
+        if (minVal) localStorage.setItem('system_taha_delay_min', minVal);
+        if (maxVal) localStorage.setItem('system_taha_delay_max', maxVal);
+        if (fixVal) localStorage.setItem('system_taha_range_delay', fixVal);
+        if (restDur) localStorage.setItem('system_taha_rest_duration', restDur);
+        if (restFreq) localStorage.setItem('system_taha_rest_frequency', restFreq);
+    } catch (e) {}
+}
+
+function switchTemplateMode(mode) {
+    currentTemplateMode = mode;
+    const btnRot = document.getElementById('btn-mode-rotating');
+    const btnSin = document.getElementById('btn-mode-single');
+    const contRot = document.getElementById('container-rotating-templates');
+    const contSin = document.getElementById('container-single-template');
+
+    if (mode === 'rotating') {
+        if (btnRot) {
+            btnRot.className = 'template-mode-btn active px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-primary-container text-on-primary-container shadow-sm';
+        }
+        if (btnSin) {
+            btnSin.className = 'template-mode-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-on-surface-variant hover:text-on-surface flex items-center gap-1.5 transition-all';
+        }
+        if (contRot) contRot.classList.remove('hidden');
+        if (contSin) contSin.classList.add('hidden');
+        renderRotatingTemplateCards();
+    } else {
+        if (btnSin) {
+            btnSin.className = 'template-mode-btn active px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-primary-container text-on-primary-container shadow-sm';
+        }
+        if (btnRot) {
+            btnRot.className = 'template-mode-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-on-surface-variant hover:text-on-surface flex items-center gap-1.5 transition-all';
+        }
+        if (contRot) contRot.classList.add('hidden');
+        if (contSin) contSin.classList.remove('hidden');
+    }
+
+    saveSettingsToLocalStorage();
+    renderRecipientTable();
+    updateDelayPatternBadge();
+    updateRotationSummary();
+}
+
+function renderRotatingTemplateCards() {
+    const container = document.getElementById('rotating-cards-container');
+    if (!container) return;
+
+    const count = rotatingTemplates.length;
+    const colorStyles = [
+        { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' },
+        { bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+        { bg: 'bg-indigo-500/20', text: 'text-indigo-400', border: 'border-indigo-500/30' },
+        { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
+        { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' }
+    ];
+
+    container.innerHTML = rotatingTemplates.map((tmpl, idx) => {
+        const num = idx + 1;
+        const style = colorStyles[idx % colorStyles.length];
+        const canDelete = count > 2;
+
+        return `
+            <div class="bg-surface-container/60 border border-outline-variant/30 rounded-2xl p-4 space-y-3 transition-all hover:border-outline-variant/60" id="rotating-card-${idx}">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/20 pb-2.5">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-7 h-7 rounded-lg ${style.bg} ${style.text} flex items-center justify-center font-mono font-extrabold text-xs border ${style.border}">
+                            #${num}
+                        </span>
+                        <div>
+                            <span class="text-xs font-bold text-on-surface flex items-center gap-2">
+                                Message #${num}
+                                <span class="text-[10px] font-mono text-on-surface-variant font-semibold bg-surface-container-highest px-2 py-0.5 rounded">
+                                    Assigned to Contacts: #${num}, #${num + count}, #${num + 2 * count}, #${num + 3 * count}...
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="insertSpintaxRotating(${idx})" class="text-[11px] text-primary hover:underline font-bold flex items-center gap-1 px-2 py-1 rounded bg-primary/10">
+                            <span class="material-symbols-outlined text-[14px]">shuffle</span> Spintax
+                        </button>
+                        ${canDelete ? `
+                            <button type="button" onclick="removeRotatingTemplateCard(${idx})" class="text-xs text-error/80 hover:text-error p-1.5 rounded-lg hover:bg-error-container/20 transition-all" title="Remove this message from rotation">
+                                <span class="material-symbols-outlined text-[18px]">delete</span>
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Variable Chips for Card -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="text-[9px] font-bold text-on-surface-variant uppercase mr-1">Variables:</span>
+                    <button type="button" onclick="insertTemplateVarRotating(${idx}, '{name}')" class="text-[11px] bg-surface-container hover:bg-primary/20 hover:text-primary px-2 py-0.5 rounded-md text-on-surface font-mono border border-outline-variant/30 transition-all">{name}</button>
+                    <button type="button" onclick="insertTemplateVarRotating(${idx}, '{phone}')" class="text-[11px] bg-surface-container hover:bg-primary/20 hover:text-primary px-2 py-0.5 rounded-md text-on-surface font-mono border border-outline-variant/30 transition-all">{phone}</button>
+                    <button type="button" onclick="insertTemplateVarRotating(${idx}, '{date}')" class="text-[11px] bg-surface-container hover:bg-primary/20 hover:text-primary px-2 py-0.5 rounded-md text-on-surface font-mono border border-outline-variant/30 transition-all">{date}</button>
+                    <button type="button" onclick="insertTemplateVarRotating(${idx}, '{time}')" class="text-[11px] bg-surface-container hover:bg-primary/20 hover:text-primary px-2 py-0.5 rounded-md text-on-surface font-mono border border-outline-variant/30 transition-all">{time}</button>
+                </div>
+
+                <!-- Textarea -->
+                <textarea id="rot-template-${idx}" rows="3" oninput="updateRotatingTemplate(${idx}, this.value)" class="w-full bg-surface-container border border-outline-variant/40 p-3 rounded-xl text-xs text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none font-sans leading-relaxed" placeholder="Type template message #${num}...">${escapeHtml(tmpl)}</textarea>
+
+                <div class="flex items-center justify-between text-[11px] text-on-surface-variant font-mono">
+                    <span id="rot-char-count-${idx}">${tmpl.length} chars</span>
+                    <span class="text-[10px] text-primary/70 cursor-pointer hover:underline" onclick="previewRotatingCard(${idx})">Preview Personalization</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const countLabel = document.getElementById('rotating-count-label');
+    if (countLabel) countLabel.textContent = `${count} Templates Active in Rotation`;
+
+    updateRotationSummary();
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function updateRotatingTemplate(idx, val) {
+    if (idx >= 0 && idx < rotatingTemplates.length) {
+        rotatingTemplates[idx] = val;
+        const charCount = document.getElementById(`rot-char-count-${idx}`);
+        if (charCount) charCount.textContent = `${val.length} حرف`;
+        saveSettingsToLocalStorage();
+    }
+}
+
+function addRotatingTemplateCard() {
+    const num = rotatingTemplates.length + 1;
+    rotatingTemplates.push(`مرحباً {name}، نود إبلاغكم بتحديث جديد بخصوص موعدكم ✅ نسعد بتواصلكم.`);
+    saveSettingsToLocalStorage();
+    renderRotatingTemplateCards();
+    renderRecipientTable();
+    updateDelayPatternBadge();
+    showToast(`تمت إضافة الرسالة #${num} إلى دورة التدوير بنجاح!`, 'success');
+}
+
+function removeRotatingTemplateCard(idx) {
+    if (rotatingTemplates.length <= 2) {
+        showToast('يجب الاحتفاظ بقالبين على الأقل للتدوير الدوري.', 'warning');
+        return;
+    }
+    rotatingTemplates.splice(idx, 1);
+    saveSettingsToLocalStorage();
+    renderRotatingTemplateCards();
+    renderRecipientTable();
+    updateDelayPatternBadge();
+    showToast('تم حذف القالب وتحديث دورة التدوير.', 'info');
+}
+
+function insertTemplateVarRotating(idx, varName) {
+    const textarea = document.getElementById(`rot-template-${idx}`);
+    if (!textarea) return;
+    const start = textarea.selectionStart || textarea.value.length;
+    const end = textarea.selectionEnd || textarea.value.length;
+    textarea.value = textarea.value.substring(0, start) + varName + textarea.value.substring(end);
+    textarea.focus();
+    textarea.setSelectionRange(start + varName.length, start + varName.length);
+    updateRotatingTemplate(idx, textarea.value);
+}
+
+function insertSpintaxRotating(idx) {
+    const textarea = document.getElementById(`rot-template-${idx}`);
+    if (!textarea) return;
+    const sample = " {مرحباً|أهلاً بك|عزيزنا} ";
+    const start = textarea.selectionStart || textarea.value.length;
+    textarea.value = textarea.value.substring(0, start) + sample + textarea.value.substring(start);
+    textarea.focus();
+    updateRotatingTemplate(idx, textarea.value);
+}
+
+function previewRotatingCard(idx) {
+    if (rotatingTemplates[idx]) {
+        let msg = rotatingTemplates[idx];
+        msg = msg.replace(/{name}/gi, 'أحمد محمود');
+        msg = msg.replace(/{phone}/gi, '01012345678');
+        msg = msg.replace(/{date}/gi, new Date().toLocaleDateString('ar-EG'));
+        msg = msg.replace(/{time}/gi, '05:00 م');
+        alert(`معاينة الرسالة #${idx + 1}:\n\n${msg}`);
+    }
+}
+
+function updateRotationSummary() {
+    const summaryChips = document.getElementById('rotation-summary-chips');
+    if (!summaryChips) return;
+
+    if (!slicedBatchRecords || slicedBatchRecords.length === 0) {
+        summaryChips.innerHTML = `<span class="text-on-surface-variant font-mono text-[11px]">قم بتحميل الأرقام لعرض توزيع الدورة</span>`;
+        return;
+    }
+
+    const tCount = (currentTemplateMode === 'rotating' && rotatingTemplates.length > 0) ? rotatingTemplates.length : 1;
+    const counts = new Array(tCount).fill(0);
+    const colors = ['emerald', 'cyan', 'indigo', 'amber', 'purple'];
+
+    let activeIdx = 0;
+    slicedBatchRecords.forEach(rec => {
+        if (!rec.status || (!rec.status.startsWith('Skipped') && !rec.status.startsWith('Failed'))) {
+            counts[activeIdx % tCount]++;
+            rec.templateNum = (activeIdx % tCount) + 1;
+            activeIdx++;
+        }
+    });
+
+    if (currentTemplateMode === 'rotating') {
+        summaryChips.innerHTML = counts.map((c, i) => {
+            const color = colors[i % colors.length];
+            return `<span class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-${color}-500/15 text-${color}-400 border border-${color}-500/30 font-mono">
+                رسالة #${i + 1}: ${c} أرقام
+            </span>`;
+        }).join('') + `<span class="text-on-surface-variant font-mono text-[10px]">(إجمالي: ${activeIdx} رقم)</span>`;
+    } else {
+        summaryChips.innerHTML = `<span class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-primary/15 text-primary border border-primary/30 font-mono">قالب موحد لكافة الأرقام (${activeIdx} رقم)</span>`;
+    }
+}
+
+function switchDelayMode(mode) {
+    currentDelayMode = mode;
+    const btnRand = document.getElementById('btn-delay-mode-random');
+    const btnFix = document.getElementById('btn-delay-mode-fixed');
+    const contRand = document.getElementById('delay-random-container');
+    const contFix = document.getElementById('delay-fixed-container');
+
+    if (mode === 'random') {
+        if (btnRand) {
+            btnRand.className = 'delay-mode-tab active py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-primary-container text-on-primary-container shadow-sm';
+        }
+        if (btnFix) {
+            btnFix.className = 'delay-mode-tab py-2 px-3 rounded-lg text-xs font-semibold text-on-surface-variant hover:text-on-surface flex items-center justify-center gap-1.5 transition-all';
+        }
+        if (contRand) contRand.classList.remove('hidden');
+        if (contFix) contFix.classList.add('hidden');
+    } else {
+        if (btnFix) {
+            btnFix.className = 'delay-mode-tab active py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-primary-container text-on-primary-container shadow-sm';
+        }
+        if (btnRand) {
+            btnRand.className = 'delay-mode-tab py-2 px-3 rounded-lg text-xs font-semibold text-on-surface-variant hover:text-on-surface flex items-center justify-center gap-1.5 transition-all';
+        }
+        if (contRand) contRand.classList.add('hidden');
+        if (contFix) contFix.classList.remove('hidden');
+    }
+
+    onDelayConfigChange();
+    saveSettingsToLocalStorage();
+}
+
+function applyDelayPreset(min, max, btnElem) {
+    switchDelayMode('random');
+    const minInput = document.getElementById('delay-min');
+    const maxInput = document.getElementById('delay-max');
+    const rangeInput = document.getElementById('range-delay');
+
+    if (minInput) minInput.value = min;
+    if (maxInput) maxInput.value = max;
+    if (rangeInput) rangeInput.value = min;
+
+    document.querySelectorAll('.speed-mode-btn').forEach(b => {
+        b.classList.remove('active', 'border-primary', 'bg-primary/15', 'ring-2', 'ring-primary/30');
+    });
+
+    if (btnElem) {
+        btnElem.classList.add('active', 'border-primary', 'bg-primary/15', 'ring-2', 'ring-primary/30');
+    }
+
+    onDelayConfigChange();
+    showToast(`تم تطبيق نمط الأمان: ${min} إلى ${max} ثوانٍ عشوائي`, 'success');
+}
+
+function onDelayConfigChange() {
+    const badge = document.getElementById('delay-value-badge');
+    const minInput = document.getElementById('delay-min');
+    const maxInput = document.getElementById('delay-max');
+    const rangeInput = document.getElementById('range-delay');
+
+    if (currentDelayMode === 'random') {
+        const minVal = minInput ? minInput.value : 8;
+        const maxVal = maxInput ? maxInput.value : 16;
+        if (badge) badge.textContent = `${minVal} - ${maxVal}s عشوائي`;
+    } else {
+        const fixVal = rangeInput ? rangeInput.value : 8;
+        if (badge) badge.textContent = `${fixVal} SECONDS`;
+    }
+
+    updateDelayPatternBadge();
+    saveSettingsToLocalStorage();
+}
+
+function toggleBatchRestUI() {
+    const chk = document.getElementById('toggle-batch-rest');
+    const box = document.getElementById('batch-rest-inputs');
+    if (!chk) return;
+    isBatchRestEnabled = chk.checked;
+    if (box) {
+        if (isBatchRestEnabled) box.classList.remove('hidden');
+        else box.classList.add('hidden');
+    }
+    saveSettingsToLocalStorage();
+    updateDelayPatternBadge();
+}
+
+function updateDelayPatternBadge() {
+    const delayPatternText = document.getElementById('delay-pattern-text');
+    if (!delayPatternText) return;
+
+    let text = '';
+    if (currentDelayMode === 'random') {
+        const minVal = document.getElementById('delay-min')?.value || 8;
+        const maxVal = document.getElementById('delay-max')?.value || 16;
+        text = `عشوائي (${minVal}s - ${maxVal}s)`;
+    } else {
+        const fixVal = document.getElementById('range-delay')?.value || 8;
+        const jitt = document.getElementById('toggle-jitter')?.checked;
+        text = `${fixVal}s ${jitt ? '+ تذبذب' : 'ثابت'}`;
+    }
+
+    if (currentTemplateMode === 'rotating') {
+        text += ` • تدوير ${rotatingTemplates.length} رسائل`;
+    } else {
+        text += ` • قالب موحد`;
+    }
+
+    if (isBatchRestEnabled) {
+        const freq = document.getElementById('rest-frequency')?.value || 20;
+        const dur = document.getElementById('rest-duration')?.value || 60;
+        text += ` [استراحة ${dur}s كل ${freq}]`;
+    }
+
+    delayPatternText.textContent = text;
+}
 // 1. Sidebar Collapse & SPA Navigation
 // ==========================================
 const sidebar = document.getElementById('sidebar');
@@ -251,6 +618,8 @@ function applyRangeFilter() {
 
     const seenPhones = new Set();
     const seenNames = new Set();
+    let validAssignIdx = 0;
+    const tCount = (currentTemplateMode === 'rotating' && rotatingTemplates.length > 0) ? rotatingTemplates.length : 1;
 
     slicedBatchRecords.forEach((rec) => {
         const isGroup = Boolean(rec.isGroup || (rec.phone && (rec.phone.includes('chat.whatsapp.com') || rec.phone.endsWith('@g.us'))));
@@ -262,12 +631,17 @@ function applyRangeFilter() {
             // retain existing status
         } else if (seenPhones.has(normPhone)) {
             rec.status = isGroup ? 'Skipped (Duplicate Group)' : 'Skipped (Duplicate Phone)';
-        } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز') {
+        } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز' && normName !== 'جروب واتساب') {
             rec.status = 'Skipped (Duplicate Name)';
         } else {
             seenPhones.add(normPhone);
             if (normName) seenNames.add(normName);
             if (!rec.status) rec.status = 'Pending Batch';
+        }
+
+        if (!rec.status || (!rec.status.startsWith('Skipped') && !rec.status.startsWith('Failed'))) {
+            rec.templateNum = (validAssignIdx % tCount) + 1;
+            validAssignIdx++;
         }
     });
 
@@ -275,6 +649,9 @@ function applyRangeFilter() {
     updateKPIStats();
     updateChartsRealtime();
     updateStartButtonState();
+    updateRotationSummary();
+    updateDelayPatternBadge();
+    renderAuditDiagnosticsTable();
 }
 
 // Excel Upload Handler
@@ -301,6 +678,12 @@ function handleFileUpload(event) {
             let startIdx = 0;
             if (rows.length > 1 && isNaN(rows[0][1])) startIdx = 1;
 
+            const currentGrp = document.getElementById('import-group-name')?.value.trim() || 'Q8-B7-UIUX-21-G1';
+            const badge1 = document.getElementById('dash-group-name-badge');
+            const badge2 = document.getElementById('dash-audit-group-badge');
+            if (badge1) badge1.textContent = currentGrp;
+            if (badge2) badge2.textContent = currentGrp;
+
             for (let i = startIdx; i < rows.length; i++) {
                 const row = rows[i];
                 if (!row || row.length === 0) continue;
@@ -320,6 +703,7 @@ function handleFileUpload(event) {
                         sheetRowIndex: i + 1,
                         name: name,
                         phone: phone,
+                        groupName: currentGrp,
                         isGroup: isGroup,
                         status: 'Pending Batch',
                         sheetStatus: 'Pending',
@@ -353,6 +737,12 @@ function parseManualText() {
     const lines = text.split('\n');
     allLoadedRecords = [];
 
+    const currentGrp = document.getElementById('import-group-name')?.value.trim() || 'Q8-B7-UIUX-21-G1';
+    const badge1 = document.getElementById('dash-group-name-badge');
+    const badge2 = document.getElementById('dash-audit-group-badge');
+    if (badge1) badge1.textContent = currentGrp;
+    if (badge2) badge2.textContent = currentGrp;
+
     lines.forEach((line, idx) => {
         const parts = line.split(/[,;\t]/);
         let name = 'Customer';
@@ -371,6 +761,7 @@ function parseManualText() {
                 sheetRowIndex: idx + 1,
                 name: name,
                 phone: phone,
+                groupName: currentGrp,
                 isGroup: isGroup,
                 status: 'Pending Batch',
                 sheetStatus: 'Pending',
@@ -410,8 +801,15 @@ async function fetchGoogleSheetRecords() {
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || 'Failed to fetch Google Sheet.');
 
+        const currentGrp = document.getElementById('import-group-name')?.value.trim() || 'Q8-B7-UIUX-21-G1';
+        const badge1 = document.getElementById('dash-group-name-badge');
+        const badge2 = document.getElementById('dash-audit-group-badge');
+        if (badge1) badge1.textContent = currentGrp;
+        if (badge2) badge2.textContent = currentGrp;
+
         allLoadedRecords = (data.records || []).map(r => ({
             ...r,
+            groupName: currentGrp,
             sheetStatus: r.sheetStatus || (r.status && r.status.includes('Sent') ? 'Attending' : 'Pending'),
             comment: r.comment || ''
         }));
@@ -560,7 +958,7 @@ function renderRecipientTable() {
     if (!slicedBatchRecords || slicedBatchRecords.length === 0) {
         recipientTableBody.innerHTML = `
             <tr>
-                <td colspan="6" class="px-6 py-12 text-center text-on-surface-variant font-medium">
+                <td colspan="7" class="px-6 py-12 text-center text-on-surface-variant font-medium">
                     No contacts loaded. Click <strong class="text-primary cursor-pointer" onclick="document.getElementById('import-modal').classList.remove('hidden')">Import Contacts</strong> to load data.
                 </td>
             </tr>
@@ -581,7 +979,7 @@ function renderRecipientTable() {
     if (filtered.length === 0) {
         recipientTableBody.innerHTML = `
             <tr>
-                <td colspan="6" class="px-6 py-8 text-center text-on-surface-variant font-medium">
+                <td colspan="7" class="px-6 py-8 text-center text-on-surface-variant font-medium">
                     No matching contacts for tab "${activeTableTab.toUpperCase()}" / search query "${activeSearchQuery}".
                 </td>
             </tr>
@@ -636,6 +1034,27 @@ function renderRecipientTable() {
         else if (item.sheetStatus === 'Excused') selectColor = 'bg-indigo-500/10 border-indigo-500/40 text-indigo-300 font-bold';
         else if (item.sheetStatus === 'Issue') selectColor = 'bg-rose-500/20 border-rose-500/50 text-rose-400 font-extrabold animate-pulse';
 
+        // Message Pattern Badge for Cyclic Rotation
+        let patternBadge = '';
+        if (currentTemplateMode === 'rotating' && rotatingTemplates && rotatingTemplates.length > 0) {
+            const tNum = item.templateNum || 1;
+            const colors = [
+                'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+                'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
+                'bg-indigo-500/15 text-indigo-400 border-indigo-500/30',
+                'bg-amber-500/15 text-amber-400 border-amber-500/30',
+                'bg-purple-500/15 text-purple-400 border-purple-500/30'
+            ];
+            const colorClass = colors[(tNum - 1) % colors.length];
+            if (item.status && item.status.includes('Sent')) {
+                patternBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${colorClass} font-mono shadow-sm" title="تم إرسال هذا القالب"><span class="material-symbols-outlined text-[12px]">done_all</span>رسالة #${tNum}</span>`;
+            } else {
+                patternBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${colorClass} font-mono"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>رسالة #${tNum}</span>`;
+            }
+        } else {
+            patternBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-surface-container text-on-surface-variant border border-outline-variant/30 font-mono">قالب موحد</span>`;
+        }
+
         return `
             <tr class="hover:bg-surface-container-highest/30 transition-all duration-200 border-b border-outline-variant/10 ${isIssue ? 'bg-rose-950/20 border-l-4 border-l-rose-500' : (isGroupItem ? 'bg-cyan-950/10 border-l-2 border-l-cyan-500/40' : '')}">
                 <td class="px-5 py-4 font-mono font-extrabold text-on-surface-variant/80 text-xs">#${item.sheetRowIndex}</td>
@@ -654,6 +1073,9 @@ function renderRecipientTable() {
                             </span>
                         </div>
                     </div>
+                </td>
+                <td class="px-5 py-4 text-center">
+                    ${patternBadge}
                 </td>
                 <td class="px-5 py-4 text-center">
                     <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] tracking-wide uppercase ${badgeStyle}">
@@ -1062,6 +1484,273 @@ function updateStartButtonState() {
     btnStart.disabled = true;
 }
 
+// Prompt user to edit group/campaign name on the dashboard badge
+function promptEditGroupName() {
+    const badge = document.getElementById('dash-group-name-badge');
+    const auditBadge = document.getElementById('dash-audit-group-badge');
+    const input = document.getElementById('import-group-name');
+    const current = badge ? badge.textContent : (input ? input.value : 'Q8-B7-UIUX-21-G1');
+    const newName = prompt('Enter Group / Campaign Name for this batch:\n(e.g. Q8-B7-UIUX-21-G1)', current);
+    if (newName && newName.trim()) {
+        const trimmed = newName.trim();
+        if (badge) badge.textContent = trimmed;
+        if (auditBadge) auditBadge.textContent = trimmed;
+        if (input) input.value = trimmed;
+        if (allLoadedRecords) allLoadedRecords.forEach(r => r.groupName = trimmed);
+        if (slicedBatchRecords) slicedBatchRecords.forEach(r => r.groupName = trimmed);
+        renderAuditDiagnosticsTable();
+        showToast(`Group name updated to: ${trimmed}`, 'success');
+    }
+}
+
+// ==========================================
+// Group Delivery Audit & Diagnostics
+// ==========================================
+let currentAuditFilter = 'all'; // 'all' | 'issues' | 'delivered'
+
+function filterAuditIssues(filterType, btn) {
+    currentAuditFilter = filterType;
+    document.querySelectorAll('.audit-tab-btn').forEach(b => {
+        b.classList.remove('active', 'bg-primary', 'text-on-primary');
+        if (b.classList.contains('text-rose-300')) {
+            b.className = 'audit-tab-btn px-3.5 py-1.5 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-500/10 border border-rose-500/30 transition-all flex items-center gap-1.5';
+        } else if (b.classList.contains('text-emerald-300')) {
+            b.className = 'audit-tab-btn px-3.5 py-1.5 rounded-xl text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/30 transition-all';
+        } else {
+            b.className = 'audit-tab-btn px-3.5 py-1.5 rounded-xl text-xs font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high border border-outline-variant/30 transition-all';
+        }
+    });
+
+    if (btn) {
+        btn.classList.add('active', 'bg-primary', 'text-on-primary');
+        btn.classList.remove('text-rose-300', 'text-emerald-300', 'text-on-surface-variant');
+    }
+
+    renderAuditDiagnosticsTable();
+}
+
+function renderAuditDiagnosticsTable() {
+    const tbody = document.getElementById('dash-audit-table-body');
+    if (!tbody) return;
+
+    const records = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : allLoadedRecords;
+    const groupInput = document.getElementById('import-group-name');
+    const fallbackGroup = (groupInput && groupInput.value.trim()) ? groupInput.value.trim() : 'Q8-B7-UIUX-21-G1';
+
+    const auditBadge = document.getElementById('dash-audit-group-badge');
+    const activeGroup = (records && records[0] && records[0].groupName) ? records[0].groupName : fallbackGroup;
+    if (auditBadge) auditBadge.textContent = activeGroup;
+
+    const isIssue = (r) => {
+        const s = r.status || '';
+        return s.includes('Failed') || s.includes('Invalid') || s.includes('Skipped') || s.includes('No WhatsApp') || r.sheetStatus === 'Issue';
+    };
+
+    const isDelivered = (r) => {
+        const s = r.status || '';
+        return s === 'Sent' || s === 'Delivered';
+    };
+
+    const issuesCountEl = document.getElementById('dash-audit-issues-count');
+    const totalIssues = (records || []).filter(isIssue).length;
+    if (issuesCountEl) issuesCountEl.textContent = totalIssues;
+
+    if (!records || records.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="px-6 py-10 text-center text-on-surface-variant font-medium">
+                    <div class="flex flex-col items-center justify-center gap-2">
+                        <span class="material-symbols-outlined text-3xl opacity-40">inventory_2</span>
+                        <span>No contacts loaded yet. Import contacts to start tracking group delivery and diagnosis.</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    let filteredRecords = records;
+    if (currentAuditFilter === 'issues') {
+        filteredRecords = records.filter(isIssue);
+    } else if (currentAuditFilter === 'delivered') {
+        filteredRecords = records.filter(isDelivered);
+    }
+
+    if (filteredRecords.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="px-6 py-10 text-center text-on-surface-variant font-medium">
+                    <div class="flex flex-col items-center justify-center gap-2">
+                        <span class="material-symbols-outlined text-3xl text-emerald-400 opacity-80">check_circle</span>
+                        <span>No records match filter: <strong class="text-on-surface capitalize">${currentAuditFilter}</strong></span>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    const templateColors = [
+        { bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/30' },
+        { bg: 'bg-cyan-500/15', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+        { bg: 'bg-indigo-500/15', text: 'text-indigo-400', border: 'border-indigo-500/30' },
+        { bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/30' },
+        { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30' }
+    ];
+
+    tbody.innerHTML = filteredRecords.map((r, idx) => {
+        const rowNum = r.sheetRowIndex || (idx + 1);
+        const name = r.name || 'Customer';
+        const phone = r.phone || '-';
+        const cleanPhone = String(phone).replace(/\D/g, '');
+        const grp = r.groupName || activeGroup;
+
+        const tmplNum = r.templateNum || 1;
+        const colorStyle = templateColors[(tmplNum - 1) % templateColors.length];
+
+        let outcomeHtml = '';
+        const st = r.status || 'Pending Batch';
+
+        if (st === 'Sent' || st === 'Delivered') {
+            outcomeHtml = `
+                <div class="space-y-0.5">
+                    <div class="flex items-center gap-1.5 font-bold text-emerald-400">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(78,222,163,0.8)]"></span>
+                        <span>Delivered Successfully</span>
+                    </div>
+                    <div class="text-[10px] text-on-surface-variant font-mono">Dispatched & verified via WhatsApp</div>
+                </div>
+            `;
+        } else if (st.includes('No WhatsApp')) {
+            outcomeHtml = `
+                <div class="space-y-0.5">
+                    <div class="flex items-center gap-1.5 font-bold text-rose-400">
+                        <span class="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(251,113,133,0.8)]"></span>
+                        <span>No WhatsApp Account</span>
+                    </div>
+                    <div class="text-[10px] text-rose-300/80 font-mono">Number not registered on WhatsApp servers</div>
+                </div>
+            `;
+        } else if (st.includes('Invalid Phone')) {
+            outcomeHtml = `
+                <div class="space-y-0.5">
+                    <div class="flex items-center gap-1.5 font-bold text-amber-400">
+                        <span class="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"></span>
+                        <span>Invalid Phone Format</span>
+                    </div>
+                    <div class="text-[10px] text-amber-300/80 font-mono">Missing valid country prefix (+20) or bad digits</div>
+                </div>
+            `;
+        } else if (st.includes('Duplicate')) {
+            outcomeHtml = `
+                <div class="space-y-0.5">
+                    <div class="flex items-center gap-1.5 font-bold text-purple-400">
+                        <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                        <span>Duplicate Skipped</span>
+                    </div>
+                    <div class="text-[10px] text-purple-300/80 font-mono">Anti-spam guard skipped duplicate entry</div>
+                </div>
+            `;
+        } else if (st.includes('Failed')) {
+            outcomeHtml = `
+                <div class="space-y-0.5">
+                    <div class="flex items-center gap-1.5 font-bold text-rose-400">
+                        <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                        <span>${st}</span>
+                    </div>
+                    <div class="text-[10px] text-on-surface-variant font-mono">${r.comment || 'Delivery unsuccessful'}</div>
+                </div>
+            `;
+        } else {
+            outcomeHtml = `
+                <div class="space-y-0.5">
+                    <div class="flex items-center gap-1.5 font-medium text-cyan-400">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        <span>In Queue (Pending)</span>
+                    </div>
+                    <div class="text-[10px] text-on-surface-variant font-mono">Awaiting automated batch dispatch</div>
+                </div>
+            `;
+        }
+
+        return `
+            <tr class="hover:bg-surface-container-high/40 transition-colors">
+                <td class="px-5 py-3 font-mono font-bold text-on-surface-variant">${rowNum}</td>
+                <td class="px-5 py-3 font-bold text-on-surface">
+                    <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center text-[10px] font-bold text-primary">
+                            ${name.charAt(0).toUpperCase()}
+                        </span>
+                        <span>${name}</span>
+                    </div>
+                </td>
+                <td class="px-5 py-3 font-mono text-on-surface text-xs font-semibold">${phone}</td>
+                <td class="px-5 py-3">
+                    <span class="font-mono text-[10px] font-black text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md">
+                        ${grp}
+                    </span>
+                </td>
+                <td class="px-5 py-3 text-center">
+                    <span class="inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${colorStyle.bg} ${colorStyle.text} ${colorStyle.border}">
+                        Message #${tmplNum}
+                    </span>
+                </td>
+                <td class="px-5 py-3">${outcomeHtml}</td>
+                <td class="px-5 py-3 text-right">
+                    ${cleanPhone ? `
+                        <a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-highest hover:bg-primary/20 hover:text-primary text-on-surface-variant font-semibold text-[11px] transition-all" title="Open in WhatsApp">
+                            <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+                            <span>Chat</span>
+                        </a>
+                    ` : '<span class="text-on-surface-variant opacity-40">-</span>'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function exportIssuesToExcel() {
+    const records = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : allLoadedRecords;
+    const isIssue = (r) => {
+        const s = r.status || '';
+        return s.includes('Failed') || s.includes('Invalid') || s.includes('Skipped') || s.includes('No WhatsApp') || r.sheetStatus === 'Issue';
+    };
+
+    const issues = (records || []).filter(isIssue);
+    if (issues.length === 0) {
+        showToast('No delivery issues found in the current batch to export.', 'info');
+        return;
+    }
+
+    const groupInput = document.getElementById('import-group-name');
+    const groupName = (issues[0]?.groupName) || (groupInput?.value.trim()) || 'BatchGroup';
+
+    const rows = issues.map((r, i) => ({
+        'Index': r.sheetRowIndex || (i + 1),
+        'Recipient Name': r.name || 'Unknown',
+        'Phone Number': r.phone || '',
+        'Group Name': r.groupName || groupName,
+        'Template Pattern': `Message #${r.templateNum || 1}`,
+        'Delivery Status': r.status || 'Failed',
+        'Diagnostic Reason': r.status.includes('No WhatsApp') ? 'Number not registered on WhatsApp' : (r.status.includes('Invalid') ? 'Invalid phone format' : (r.comment || 'Delivery error')),
+        'Timestamp': new Date().toLocaleString()
+    }));
+
+    if (typeof XLSX === 'undefined') {
+        showToast('Excel library (XLSX) is not loaded.', 'error');
+        return;
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Issues Audit');
+
+    const cleanGroupName = groupName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `Issues_Audit_${cleanGroupName}_${Date.now()}.xlsx`;
+    XLSX.writeFile(workbook, filename);
+    showToast(`Exported ${issues.length} issue contacts to ${filename}`, 'success');
+}
+
 // Toast Notification (replaces all alert() calls)
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -1253,6 +1942,7 @@ socket.on('job-status', (data) => {
             renderRecipientTable();
             updateKPIStats();
             updateChartsRealtime();
+            renderAuditDiagnosticsTable();
         }
     }
 
@@ -1286,7 +1976,7 @@ socket.on('job-status', (data) => {
     }
 
     if (type === 'delay') {
-        startDelayCountdown(delaySeconds);
+        startDelayCountdown(delaySeconds, data.isBreak, data.breakText);
     }
 
     if (type === 'stopped' || type === 'complete') {
@@ -1310,9 +2000,17 @@ socket.on('job-status', (data) => {
     }
 });
 
-function startDelayCountdown(seconds) {
+function startDelayCountdown(seconds, isBreak = false, breakText = '') {
     if (currentCountdownInterval) clearInterval(currentCountdownInterval);
     let remaining = seconds;
+    const delayPatternText = document.getElementById('delay-pattern-text');
+    
+    if (isBreak && delayPatternText) {
+        delayPatternText.textContent = breakText || `☕ استراحة أمان دورية (${seconds}s)...`;
+    } else {
+        updateDelayPatternBadge();
+    }
+
     if (countdownTimer) countdownTimer.textContent = `00:${remaining < 10 ? '0' + remaining : remaining}s`;
 
     currentCountdownInterval = setInterval(() => {
@@ -1321,6 +2019,7 @@ function startDelayCountdown(seconds) {
             clearInterval(currentCountdownInterval);
             if (countdownTimer) countdownTimer.textContent = '00:00s';
             if (progressBarTick) progressBarTick.style.width = '100%';
+            updateDelayPatternBadge();
         } else {
             if (countdownTimer) countdownTimer.textContent = `00:${remaining < 10 ? '0' + remaining : remaining}s`;
             const pct = Math.round(((seconds - remaining) / seconds) * 100);
@@ -1333,10 +2032,63 @@ function updateProgressBar(job) {
     const total = job.total || 1;
     const processed = job.currentIndex || 0;
     const percent = Math.min(Math.round((processed / total) * 100), 100);
-    
+    const sent = job.sent || 0;
+    const failed = job.failed || 0;
+    const skipped = job.skipped || 0;
+    const pending = Math.max(0, total - processed);
+
+    // Confirmation page progress bar
     if (progressFill) progressFill.style.width = `${percent}%`;
     if (progressPercentage) progressPercentage.textContent = `${percent}% Completed`;
     if (progressCounts) progressCounts.textContent = `${processed} / ${total} Messages`;
+
+    // Dashboard progress bar (Live Campaign Progress section)
+    const dashFill = document.getElementById('dash-progress-fill');
+    const dashPct = document.getElementById('dash-progress-pct');
+    const dashCounts = document.getElementById('dash-progress-counts');
+    const dashLiveBadge = document.getElementById('dash-live-dispatch-badge');
+    const dashTemplateTag = document.getElementById('dash-current-template-tag');
+
+    if (dashFill) dashFill.style.width = `${percent}%`;
+    if (dashPct) dashPct.textContent = `${percent}%`;
+    if (dashCounts) dashCounts.textContent = `${processed} / ${total} Contacts Dispatched`;
+
+    if (dashLiveBadge) {
+        if (job.isRunning && !job.isPaused) {
+            dashLiveBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span><span>Sending Live...</span>`;
+            dashLiveBadge.className = 'px-3.5 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary border border-primary/25 flex items-center gap-2';
+        } else if (job.isPaused) {
+            dashLiveBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-secondary"></span><span>Paused</span>`;
+            dashLiveBadge.className = 'px-3.5 py-1.5 rounded-full text-xs font-bold bg-secondary/10 text-secondary border border-secondary/25 flex items-center gap-2';
+        } else {
+            dashLiveBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-primary"></span><span>Engine Ready</span>`;
+            dashLiveBadge.className = 'px-3.5 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary border border-primary/25 flex items-center gap-2';
+        }
+    }
+
+    // Update group name badge if job has groupName
+    if (job.groupName) {
+        const badge = document.getElementById('dash-group-name-badge');
+        if (badge) badge.textContent = job.groupName;
+        const auditBadge = document.getElementById('dash-audit-group-badge');
+        if (auditBadge) auditBadge.textContent = job.groupName;
+    }
+
+    // Current template tag
+    if (dashTemplateTag && job.rotationMode && job.messageTemplates && job.messageTemplates.length > 0) {
+        const activeTemplateNum = ((job.currentIndex || 0) % job.messageTemplates.length) + 1;
+        dashTemplateTag.textContent = `Message #${activeTemplateNum}`;
+    }
+
+    // Dashboard micro-stats
+    const statDelivered = document.getElementById('dash-stat-delivered');
+    const statIssues = document.getElementById('dash-stat-issues');
+    const statSkipped = document.getElementById('dash-stat-skipped');
+    const statPending = document.getElementById('dash-stat-pending');
+    if (statDelivered) statDelivered.textContent = sent;
+    if (statIssues) statIssues.textContent = failed;
+    if (statSkipped) statSkipped.textContent = skipped;
+    if (statPending) statPending.textContent = pending;
 }
 
 // ==========================================
@@ -1344,12 +2096,23 @@ function updateProgressBar(job) {
 // ==========================================
 if (btnStart) {
     btnStart.addEventListener('click', async () => {
-        const messageTemplate = messageTemplateInput.value.trim();
-        const safetyDelaySec = parseInt(safetyDelayInput.value, 10) || 8;
+        let messageTemplate = '';
+        let activeTemplates = [];
 
-        if (!messageTemplate) {
-            showToast('Please enter a message template in Throttle & Settings tab.', 'warning');
-            return;
+        if (currentTemplateMode === 'rotating') {
+            activeTemplates = rotatingTemplates.map(t => t.trim()).filter(t => t.length > 0);
+            if (activeTemplates.length === 0) {
+                showToast('يرجى إدخال نص رسالة واحدة على الأقل في قوالب التدوير الدوري.', 'warning');
+                return;
+            }
+            messageTemplate = activeTemplates[0];
+        } else {
+            messageTemplate = messageTemplateInput ? messageTemplateInput.value.trim() : '';
+            if (!messageTemplate) {
+                showToast('يرجى إدخال نص الرسالة في تبويب الإعدادات.', 'warning');
+                return;
+            }
+            activeTemplates = [messageTemplate];
         }
 
         if (!isWhatsappConnected) {
@@ -1362,13 +2125,28 @@ if (btnStart) {
             return;
         }
 
-        const fromIdx = rangeFromInput.value;
-        const toIdx = rangeToInput.value;
+        const fromIdx = rangeFromInput ? rangeFromInput.value : 1;
+        const toIdx = rangeToInput ? rangeToInput.value : slicedBatchRecords.length;
+
+        const delayMinVal = parseInt(document.getElementById('delay-min')?.value, 10) || 8;
+        const delayMaxVal = parseInt(document.getElementById('delay-max')?.value, 10) || 16;
+        const safetyDelaySec = parseInt(safetyDelayInput ? safetyDelayInput.value : 8, 10) || 8;
+        const restDuration = isBatchRestEnabled ? (parseInt(document.getElementById('rest-duration')?.value, 10) || 60) : 0;
+        const restFrequency = isBatchRestEnabled ? (parseInt(document.getElementById('rest-frequency')?.value, 10) || 20) : 0;
+        const useJitter = document.getElementById('toggle-jitter')?.checked ?? true;
 
         dispatchHistory = [];
         btnStart.disabled = true;
         addLog(`Initializing batch sending (#${fromIdx} to #${toIdx})...`, 'system');
         showToast(`Starting batch: #${fromIdx} to #${toIdx} (${slicedBatchRecords.length} contacts)`, 'info');
+
+        // Read group/campaign name from import modal input
+        const groupNameInput = document.getElementById('import-group-name');
+        const groupName = groupNameInput ? groupNameInput.value.trim() : 'Default Group';
+
+        // Update dashboard group name badge immediately
+        const groupBadge = document.getElementById('dash-group-name-badge');
+        if (groupBadge && groupName) groupBadge.textContent = groupName;
 
         try {
             const response = await fetch(`${socketServerUrl}/api/send-custom-list`, {
@@ -1377,7 +2155,16 @@ if (btnStart) {
                 body: JSON.stringify({
                     records: slicedBatchRecords,
                     messageTemplate,
-                    safetyDelaySec
+                    messageTemplates: activeTemplates,
+                    rotationMode: currentTemplateMode === 'rotating',
+                    safetyDelaySec,
+                    minDelaySec: delayMinVal,
+                    maxDelaySec: delayMaxVal,
+                    delayMode: currentDelayMode,
+                    pauseAfterCount: restFrequency,
+                    pauseDurationSec: restDuration,
+                    useJitter,
+                    groupName
                 })
             });
 
@@ -1495,11 +2282,58 @@ function updateTemplateLivePreview() {
     preview.textContent = text;
 }
 
-// Event listener for template input live preview
+function initSettingsUI() {
+    const savedMin = localStorage.getItem('system_taha_delay_min');
+    const savedMax = localStorage.getItem('system_taha_delay_max');
+    const savedFix = localStorage.getItem('system_taha_range_delay');
+    const savedRestDur = localStorage.getItem('system_taha_rest_duration');
+    const savedRestFreq = localStorage.getItem('system_taha_rest_frequency');
+
+    if (savedMin && document.getElementById('delay-min')) document.getElementById('delay-min').value = savedMin;
+    if (savedMax && document.getElementById('delay-max')) document.getElementById('delay-max').value = savedMax;
+    if (savedFix && document.getElementById('range-delay')) document.getElementById('range-delay').value = savedFix;
+    if (savedRestDur && document.getElementById('rest-duration')) document.getElementById('rest-duration').value = savedRestDur;
+    if (savedRestFreq && document.getElementById('rest-frequency')) document.getElementById('rest-frequency').value = savedRestFreq;
+
+    const restChk = document.getElementById('toggle-batch-rest');
+    if (restChk) {
+        restChk.checked = isBatchRestEnabled;
+        toggleBatchRestUI();
+    }
+
+    switchDelayMode(currentDelayMode);
+    switchTemplateMode(currentTemplateMode);
+    renderRotatingTemplateCards();
+    updateDelayPatternBadge();
+    updateRotationSummary();
+    renderAuditDiagnosticsTable();
+
+    const groupNameInput = document.getElementById('import-group-name');
+    if (groupNameInput) {
+        groupNameInput.addEventListener('input', () => {
+            const val = groupNameInput.value.trim() || 'Q8-B7-UIUX-21-G1';
+            const b1 = document.getElementById('dash-group-name-badge');
+            const b2 = document.getElementById('dash-audit-group-badge');
+            if (b1) b1.textContent = val;
+            if (b2) b2.textContent = val;
+            if (allLoadedRecords) allLoadedRecords.forEach(r => { if (!r.customGroup) r.groupName = val; });
+            if (slicedBatchRecords) slicedBatchRecords.forEach(r => { if (!r.customGroup) r.groupName = val; });
+            renderAuditDiagnosticsTable();
+        });
+    }
+}
+
+// Event listener for template input live preview & app initialization
 document.addEventListener('DOMContentLoaded', () => {
     const textarea = document.getElementById('message-template');
     if (textarea) {
         textarea.addEventListener('input', updateTemplateLivePreview);
         updateTemplateLivePreview();
     }
+    initSettingsUI();
 });
+
+// Also run immediately if DOM is already ready
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    initSettingsUI();
+}

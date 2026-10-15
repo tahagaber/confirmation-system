@@ -37,7 +37,15 @@ let currentJob = {
     spreadsheetId: '',
     range: '',
     messageTemplate: '',
+    messageTemplates: [],
+    rotationMode: false,
     safetyDelaySec: 8,
+    minDelaySec: 8,
+    maxDelaySec: 16,
+    delayMode: 'random', // 'random' | 'fixed'
+    useJitter: true,
+    pauseAfterCount: 0,
+    pauseDurationSec: 0,
     total: 0,
     sent: 0,
     failed: 0,
@@ -46,71 +54,90 @@ let currentJob = {
     list: []
 };
 
-// Initialize WhatsApp Web Client
-console.log('System Taha: Initializing WhatsApp Web Client...');
-wwebStatus = 'connecting';
+let wwebClient;
 
-const wwebClient = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-        ]
-    }
-});
+function createWhatsAppClient() {
+    console.log('System Taha: Initializing WhatsApp Web Client...');
+    wwebStatus = 'connecting';
+    io.emit('whatsapp-status', { status: 'connecting' });
 
-// WhatsApp Events
-wwebClient.on('qr', async (qr) => {
-    wwebStatus = 'qr';
-    lastQrCode = qr;
-    console.log('\n--- WhatsApp QR Code Received ---');
-    console.log('Scan QR code to authenticate:');
-    qrcodeTerminal.generate(qr, { small: true });
-    console.log('---------------------------------\n');
-    
-    try {
-        const qrDataUrl = await QRCode.toDataURL(qr, { width: 300, margin: 2 });
-        io.emit('whatsapp-status', { status: 'qr', qr, qrDataUrl });
-    } catch (err) {
-        console.error('Failed to generate QR data URL:', err);
-        io.emit('whatsapp-status', { status: 'qr', qr });
-    }
-});
+    wwebClient = new Client({
+        authStrategy: new LocalAuth(),
+        webVersionCache: {
+            type: 'remote',
+            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html'
+        },
+        puppeteer: {
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        }
+    });
 
-wwebClient.on('ready', () => {
-    wwebStatus = 'ready';
-    lastQrCode = '';
-    console.log('System Taha: WhatsApp Web Client is connected and ready!');
-    io.emit('whatsapp-status', { status: 'ready' });
-});
+    // WhatsApp Events
+    wwebClient.on('qr', async (qr) => {
+        wwebStatus = 'qr';
+        lastQrCode = qr;
+        console.log('\n--- WhatsApp QR Code Received ---');
+        console.log('Scan QR code to authenticate:');
+        qrcodeTerminal.generate(qr, { small: true });
+        console.log('---------------------------------\n');
+        
+        try {
+            const qrDataUrl = await QRCode.toDataURL(qr, { width: 300, margin: 2 });
+            io.emit('whatsapp-status', { status: 'qr', qr, qrDataUrl });
+        } catch (err) {
+            console.error('Failed to generate QR data URL:', err);
+            io.emit('whatsapp-status', { status: 'qr', qr });
+        }
+    });
 
-wwebClient.on('authenticated', () => {
-    console.log('WhatsApp authenticated successfully.');
-});
+    wwebClient.on('ready', () => {
+        wwebStatus = 'ready';
+        lastQrCode = '';
+        console.log('System Taha: WhatsApp Web Client is connected and ready!');
+        io.emit('whatsapp-status', { status: 'ready' });
+    });
 
-wwebClient.on('auth_failure', (msg) => {
-    wwebStatus = 'disconnected';
-    console.error('WhatsApp authentication failure:', msg);
-    io.emit('whatsapp-status', { status: 'disconnected', error: msg });
-});
+    wwebClient.on('authenticated', () => {
+        console.log('WhatsApp authenticated successfully.');
+    });
 
-wwebClient.on('disconnected', (reason) => {
-    wwebStatus = 'disconnected';
-    console.log('WhatsApp client disconnected:', reason);
-    io.emit('whatsapp-status', { status: 'disconnected', reason });
-});
+    wwebClient.on('auth_failure', (msg) => {
+        wwebStatus = 'disconnected';
+        console.error('WhatsApp authentication failure:', msg);
+        io.emit('whatsapp-status', { status: 'disconnected', error: msg });
+    });
 
-wwebClient.initialize().catch(err => {
-    console.error('Failed to initialize WhatsApp client:', err);
-    wwebStatus = 'disconnected';
-});
+    wwebClient.on('disconnected', (reason) => {
+        wwebStatus = 'disconnected';
+        console.log('WhatsApp client disconnected:', reason);
+        io.emit('whatsapp-status', { status: 'disconnected', reason });
+    });
+
+    wwebClient.initialize().catch(err => {
+        console.error('Failed to initialize WhatsApp client:', err.message);
+        wwebStatus = 'disconnected';
+        io.emit('whatsapp-status', { status: 'disconnected', error: err.message });
+        console.log('System Taha: Scheduling re-initialization in 5 seconds...');
+        setTimeout(() => {
+            if (wwebStatus === 'disconnected') {
+                createWhatsAppClient();
+            }
+        }, 5000);
+    });
+}
+
+createWhatsAppClient();
+
+
 
 // Helper: Get Google Sheets Client
 function getSheetsClient() {
@@ -309,6 +336,8 @@ async function fetchRowsAnyWay(spreadsheetId, range) {
 
 // Background Bulk Messaging Loop
 async function runBulkSender() {
+    let activeSendCount = 0; // Tracks sequence of valid recipients for rotating templates
+
     while (currentJob.isRunning) {
         if (currentJob.isPaused) {
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -339,8 +368,24 @@ async function runBulkSender() {
         }
 
         const isGroup = item.isGroup || isGroupTarget(item.phone);
-        console.log(`Sending message to ${isGroup ? 'Group: ' : ''}${item.name} (${item.phone})...`);
-        io.emit('job-status', { type: 'progress', job: currentJob, log: `Sending message to ${isGroup ? 'Group: ' : ''}${item.name} (#${item.sheetRowIndex})...` });
+
+        // Determine message template to use (Cyclic / Round-Robin rotation or Single template)
+        let rawTemplate = currentJob.messageTemplate || '';
+        let templateIndex = 0;
+        if (currentJob.rotationMode && Array.isArray(currentJob.messageTemplates) && currentJob.messageTemplates.length > 0) {
+            templateIndex = activeSendCount % currentJob.messageTemplates.length;
+            rawTemplate = currentJob.messageTemplates[templateIndex];
+        }
+        item.templateIndex = templateIndex;
+        item.templateNum = templateIndex + 1;
+
+        const patternTag = currentJob.rotationMode ? `[رسالة #${item.templateNum}] ` : '';
+        console.log(`Sending message ${patternTag}to ${isGroup ? 'Group: ' : ''}${item.name} (${item.phone})...`);
+        io.emit('job-status', { 
+            type: 'progress', 
+            job: currentJob, 
+            log: `جاري إرسال ${patternTag}إلى ${isGroup ? 'جروب: ' : ''}${item.name} (#${item.sheetRowIndex})...` 
+        });
 
         let wwebJid = null;
         if (isGroup) {
@@ -353,14 +398,18 @@ async function runBulkSender() {
             item.status = isGroup ? 'Failed (Invalid Group Link)' : 'Failed (Invalid Phone)';
             currentJob.failed++;
             currentJob.currentIndex++;
+            activeSendCount++; // Advance rotation rhythm
             io.emit('job-status', { type: 'progress', job: currentJob, log: `Contact #${item.sheetRowIndex}: Invalid ${isGroup ? 'group link' : 'phone number'}.` });
             continue;
         }
 
         try {
-            // Support Spintax {Hello|Hi|Greetings} and {name} template variables
-            let personalizedMessage = parseSpintax(currentJob.messageTemplate);
-            personalizedMessage = personalizedMessage.replace(/{name}/gi, item.name);
+            // Support Spintax {Hello|Hi|Greetings} and template variables
+            let personalizedMessage = parseSpintax(rawTemplate);
+            personalizedMessage = personalizedMessage.replace(/{name}/gi, item.name || 'Customer');
+            personalizedMessage = personalizedMessage.replace(/{phone}/gi, item.phone || '');
+            personalizedMessage = personalizedMessage.replace(/{date}/gi, new Date().toLocaleDateString('ar-EG'));
+            personalizedMessage = personalizedMessage.replace(/{time}/gi, new Date().toLocaleTimeString('ar-EG'));
             
             // Check if target is registered on WhatsApp (Only for individual chats, NOT groups)
             let isRegistered = true;
@@ -378,33 +427,72 @@ async function runBulkSender() {
                 item.status = 'Failed (No WhatsApp)';
                 currentJob.failed++;
                 console.log(`Contact ${item.name} (${item.phone}) is not registered on WhatsApp.`);
-                io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ ${item.name} (${item.phone}): Number not on WhatsApp!` });
+                io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ ${item.name} (${item.phone}): الرقم غير مسجل على واتساب!` });
             } else {
                 await wwebClient.sendMessage(wwebJid, personalizedMessage);
                 item.status = 'Sent';
+                item.sentMessage = personalizedMessage;
                 currentJob.sent++;
-                console.log(`Successfully sent to ${isGroup ? 'Group: ' : ''}${item.name}`);
-                io.emit('job-status', { type: 'progress', job: currentJob, log: `✅ Successfully sent to ${isGroup ? 'Group: ' : ''}${item.name} (${item.phone})` });
+                console.log(`Successfully sent ${patternTag}to ${isGroup ? 'Group: ' : ''}${item.name}`);
+                io.emit('job-status', { 
+                    type: 'progress', 
+                    job: currentJob, 
+                    log: `✅ تم إرسال ${patternTag}بنجاح إلى ${isGroup ? 'جروب: ' : ''}${item.name} (${item.phone})` 
+                });
             }
         } catch (error) {
             console.error(`Error sending message to ${item.name}:`, error.message);
             item.status = `Failed (${error.message.includes('not registered') ? 'No WhatsApp' : error.message})`;
             currentJob.failed++;
-            io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ Failed to send to ${item.name}: ${error.message}` });
+            io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ فشل الإرسال إلى ${item.name}: ${error.message}` });
         }
 
+        activeSendCount++;
         currentJob.currentIndex++;
 
         // Anti-spam Safety Delay between messages
         if (currentJob.currentIndex < currentJob.list.length && currentJob.isRunning && !currentJob.isPaused) {
-            const baseDelay = currentJob.safetyDelaySec || 8;
-            // Add a small 1-3 second random jitter to make sending behavior human-like
-            const jitter = Math.floor(Math.random() * 3);
-            const delaySeconds = baseDelay + jitter;
+            let delaySeconds = 8;
+            let isBreak = false;
+            let breakText = '';
 
-            console.log(`Safety Delay: Waiting ${delaySeconds} seconds before sending next message...`);
-            io.emit('job-status', { type: 'delay', delaySeconds, job: currentJob });
-            
+            // 1. Periodic Batch Rest Break (Anti-Ban safeguard)
+            if (currentJob.pauseAfterCount > 0 && currentJob.pauseDurationSec > 0 && currentJob.sent > 0 && (currentJob.sent % currentJob.pauseAfterCount === 0)) {
+                delaySeconds = currentJob.pauseDurationSec;
+                isBreak = true;
+                breakText = `☕ استراحة أمان دورية (${delaySeconds} ثانية) لحماية الحساب بعد إرسال ${currentJob.sent} رسالة`;
+                console.log(`[Anti-Spam Break] ${breakText}`);
+                io.emit('job-status', { 
+                    type: 'delay', 
+                    delaySeconds, 
+                    isBreak: true, 
+                    breakText, 
+                    job: currentJob 
+                });
+            } 
+            // 2. Random Delay Range Mode (Min to Max seconds)
+            else if (currentJob.delayMode === 'random' || (currentJob.minDelaySec && currentJob.maxDelaySec)) {
+                const min = Math.min(Number(currentJob.minDelaySec) || 5, Number(currentJob.maxDelaySec) || 16);
+                const max = Math.max(Number(currentJob.minDelaySec) || 5, Number(currentJob.maxDelaySec) || 16);
+                delaySeconds = Math.floor(Math.random() * (max - min + 1)) + min;
+                console.log(`Safety Delay: Waiting ${delaySeconds} seconds (Random Range: ${min}-${max}s)...`);
+                io.emit('job-status', { 
+                    type: 'delay', 
+                    delaySeconds, 
+                    minDelay: min, 
+                    maxDelay: max, 
+                    job: currentJob 
+                });
+            } 
+            // 3. Fixed Delay Mode (+ optional jitter)
+            else {
+                const baseDelay = Number(currentJob.safetyDelaySec) || 8;
+                const jitter = currentJob.useJitter ? Math.floor(Math.random() * 3) : 0;
+                delaySeconds = baseDelay + jitter;
+                console.log(`Safety Delay: Waiting ${delaySeconds} seconds...`);
+                io.emit('job-status', { type: 'delay', delaySeconds, job: currentJob });
+            }
+
             for (let d = 0; d < delaySeconds; d++) {
                 if (!currentJob.isRunning || currentJob.isPaused) break;
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -708,10 +796,38 @@ app.post('/api/preview-sheet', async (req, res) => {
 
 // REST Endpoint: Send Custom List (Excel upload / Manual text / Sliced range)
 app.post('/api/send-custom-list', async (req, res) => {
-    const { records, messageTemplate, safetyDelaySec } = req.body;
-    if (!records || !records.length || !messageTemplate) {
-        return res.status(400).json({ error: 'Contact list and message template are required.' });
+    const { 
+        records, 
+        messageTemplate, 
+        messageTemplates, 
+        rotationMode, 
+        safetyDelaySec, 
+        minDelaySec, 
+        maxDelaySec, 
+        delayMode, 
+        pauseAfterCount, 
+        pauseDurationSec, 
+        useJitter,
+        groupName 
+    } = req.body;
+
+    if (!records || !records.length) {
+        return res.status(400).json({ error: 'Contact list is required.' });
     }
+
+    // Process templates (Both single and multiple rotation)
+    let processedTemplates = [];
+    if (Array.isArray(messageTemplates) && messageTemplates.length > 0) {
+        processedTemplates = messageTemplates.map(t => String(t || '').trim()).filter(t => t.length > 0);
+    }
+    const singleTemplate = String(messageTemplate || '').trim();
+
+    if (processedTemplates.length === 0 && !singleTemplate) {
+        return res.status(400).json({ error: 'Message template is required.' });
+    }
+
+    const isRotating = Boolean(rotationMode && processedTemplates.length > 0);
+    const activeTemplates = isRotating ? processedTemplates : [singleTemplate || processedTemplates[0] || ''];
 
     if (wwebStatus !== 'ready') {
         return res.status(400).json({ error: 'WhatsApp client is not connected. Scan QR code first.' });
@@ -724,6 +840,8 @@ app.post('/api/send-custom-list', async (req, res) => {
     const list = [];
     const seenPhones = new Set();
     const seenNames = new Set();
+    let assignIdx = 0;
+    const resolvedGroupName = groupName ? String(groupName).trim() : 'Default Group';
 
     records.forEach((rec) => {
         const name = rec.name ? String(rec.name).trim() : 'Customer';
@@ -739,11 +857,17 @@ app.post('/api/send-custom-list', async (req, res) => {
             status = isGroup ? 'Failed (Invalid Group Link)' : 'Failed (Invalid Phone)';
         } else if (seenPhones.has(wwebJid)) {
             status = isGroup ? 'Skipped (Duplicate Group)' : 'Skipped (Duplicate Phone)';
-        } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز') {
+        } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز' && normName !== 'جروب واتساب') {
             status = 'Skipped (Duplicate Name)';
         } else {
             seenPhones.add(wwebJid);
             if (normName) seenNames.add(normName);
+        }
+
+        let templateNum = 1;
+        if (isRotating && !status.startsWith('Skipped')) {
+            templateNum = (assignIdx % activeTemplates.length) + 1;
+            assignIdx++;
         }
 
         list.push({
@@ -751,6 +875,10 @@ app.post('/api/send-custom-list', async (req, res) => {
             phone,
             isGroup,
             status,
+            templateNum,
+            groupName: rec.groupName ? String(rec.groupName).trim() : resolvedGroupName,
+            sheetStatus: rec.sheetStatus || 'Attending',
+            comment: rec.comment || '',
             sheetRowIndex: rec.sheetRowIndex || (list.length + 1)
         });
     });
@@ -758,10 +886,19 @@ app.post('/api/send-custom-list', async (req, res) => {
     currentJob = {
         isRunning: true,
         isPaused: false,
+        groupName: resolvedGroupName,
         spreadsheetId: 'Custom Batch List',
         range: 'N/A',
-        messageTemplate,
+        messageTemplate: singleTemplate || activeTemplates[0],
+        messageTemplates: activeTemplates,
+        rotationMode: isRotating,
         safetyDelaySec: parseInt(safetyDelaySec, 10) || 8,
+        minDelaySec: parseInt(minDelaySec, 10) || 8,
+        maxDelaySec: parseInt(maxDelaySec, 10) || 16,
+        delayMode: delayMode || (minDelaySec && maxDelaySec ? 'random' : 'fixed'),
+        pauseAfterCount: parseInt(pauseAfterCount, 10) || 0,
+        pauseDurationSec: parseInt(pauseDurationSec, 10) || 0,
+        useJitter: useJitter !== undefined ? Boolean(useJitter) : true,
         total: list.length,
         sent: 0,
         failed: list.filter(item => item.status.startsWith('Failed')).length,
