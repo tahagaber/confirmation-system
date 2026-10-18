@@ -81,10 +81,10 @@ let liveElapsedInterval = null;
 
 // Preset Templates
 const PRESET_TEMPLATES = {
-    confirmation: "أهلاً بك {name}، يسعدنا تأكيد موعدك معنا بنجاح! 🎉 يرجى العلم بضرورة الحضور قبل الموعد بـ 10 دقائق.",
-    reminder: "تذكير: مرحباً {name}، نود تذكيرك بموعدك القادم غداً. للإلغاء أو التعديل يرجى الرد على هذه الرسالة.",
-    offer: "عزيزنا {name} 🌟 خصم خاص لك لفترة محدودة! استمتع بخصم 20% عند الحجز اليوم.",
-    spintax: "{أهلاً بك|مرحباً|مرحبتين|عزيزنا} {name}، {يسعدنا تأكيد موعدك|نود تذكيرك بموعدك|نحييك ونأمل أن تكون بخير} 🎉"
+    confirmation: "Hello {name}, we are pleased to confirm your appointment! 🎉 Please make sure to arrive 10 minutes early.",
+    reminder: "Reminder: Hi {name}, this is a reminder for your upcoming appointment tomorrow. Reply to reschedule or cancel.",
+    offer: "Dear {name} 🌟 Special limited-time offer! Enjoy 20% off when booking today.",
+    spintax: "{Hello|Hi|Dear} {name}, {we are glad to confirm your booking|this is your reminder|hope you are doing well} 🎉"
 };
 
 // Cyclic Rotating Templates & Advanced Delay State
@@ -103,9 +103,9 @@ try {
 
 if (!Array.isArray(rotatingTemplates) || rotatingTemplates.length === 0) {
     rotatingTemplates = [
-        "أهلاً بك {name}، يسعدنا تأكيد موعدك معنا بنجاح! 🎉 يرجى العلم بضرورة الحضور قبل الموعد بـ 10 دقائق.",
-        "مرحباً {name}، نود إعلامك بتأكيد حجزك لدينا 🌟 في حال رغبتك بتعديل الميعاد يرجى مراسلتنا.",
-        "عزيزنا {name}، تم تسجيل بياناتك بنجاح ✅ فريقنا بانتظار تشريفك ونتمنى لك يوماً سعيداً!"
+        "Hello {name}, we are pleased to confirm your appointment! 🎉 Please make sure to arrive 10 minutes early.",
+        "Hi {name}, we would like to confirm your reservation with us 🌟 Let us know if you need to reschedule.",
+        "Dear {name}, your appointment details have been successfully registered ✅ Looking forward to seeing you!"
     ];
 }
 
@@ -247,24 +247,24 @@ function updateRotatingTemplate(idx, val) {
     if (idx >= 0 && idx < rotatingTemplates.length) {
         rotatingTemplates[idx] = val;
         const charCount = document.getElementById(`rot-char-count-${idx}`);
-        if (charCount) charCount.textContent = `${val.length} حرف`;
+        if (charCount) charCount.textContent = `${val.length} chars`;
         saveSettingsToLocalStorage();
     }
 }
 
 function addRotatingTemplateCard() {
     const num = rotatingTemplates.length + 1;
-    rotatingTemplates.push(`مرحباً {name}، نود إبلاغكم بتحديث جديد بخصوص موعدكم ✅ نسعد بتواصلكم.`);
+    rotatingTemplates.push(`Hello {name}, we would like to provide an update regarding your appointment. Best regards.`);
     saveSettingsToLocalStorage();
     renderRotatingTemplateCards();
     renderRecipientTable();
     updateDelayPatternBadge();
-    showToast(`تمت إضافة الرسالة #${num} إلى دورة التدوير بنجاح!`, 'success');
+    showToast(`Message #${num} added to rotation pool successfully!`, 'success');
 }
 
 function removeRotatingTemplateCard(idx) {
     if (rotatingTemplates.length <= 2) {
-        showToast('يجب الاحتفاظ بقالبين على الأقل للتدوير الدوري.', 'warning');
+        showToast('You must keep at least 2 templates for cyclic rotation.', 'warning');
         return;
     }
     rotatingTemplates.splice(idx, 1);
@@ -272,7 +272,7 @@ function removeRotatingTemplateCard(idx) {
     renderRotatingTemplateCards();
     renderRecipientTable();
     updateDelayPatternBadge();
-    showToast('تم حذف القالب وتحديث دورة التدوير.', 'info');
+    showToast('Template removed and rotation cycle updated.', 'info');
 }
 
 function insertTemplateVarRotating(idx, varName) {
@@ -289,7 +289,7 @@ function insertTemplateVarRotating(idx, varName) {
 function insertSpintaxRotating(idx) {
     const textarea = document.getElementById(`rot-template-${idx}`);
     if (!textarea) return;
-    const sample = " {مرحباً|أهلاً بك|عزيزنا} ";
+    const sample = " {Hello|Hi|Dear} ";
     const start = textarea.selectionStart || textarea.value.length;
     textarea.value = textarea.value.substring(0, start) + sample + textarea.value.substring(start);
     textarea.focus();
@@ -299,11 +299,11 @@ function insertSpintaxRotating(idx) {
 function previewRotatingCard(idx) {
     if (rotatingTemplates[idx]) {
         let msg = rotatingTemplates[idx];
-        msg = msg.replace(/{name}/gi, 'أحمد محمود');
-        msg = msg.replace(/{phone}/gi, '01012345678');
-        msg = msg.replace(/{date}/gi, new Date().toLocaleDateString('ar-EG'));
-        msg = msg.replace(/{time}/gi, '05:00 م');
-        alert(`معاينة الرسالة #${idx + 1}:\n\n${msg}`);
+        msg = msg.replace(/{name}/gi, 'John Doe');
+        msg = msg.replace(/{phone}/gi, '+1234567890');
+        msg = msg.replace(/{date}/gi, new Date().toLocaleDateString('en-US'));
+        msg = msg.replace(/{time}/gi, '05:00 PM');
+        alert(`Message #${idx + 1} Preview:\n\n${msg}`);
     }
 }
 
@@ -312,7 +312,7 @@ function updateRotationSummary() {
     if (!summaryChips) return;
 
     if (!slicedBatchRecords || slicedBatchRecords.length === 0) {
-        summaryChips.innerHTML = `<span class="text-on-surface-variant font-mono text-[11px]">قم بتحميل الأرقام لعرض توزيع الدورة</span>`;
+        summaryChips.innerHTML = `<span class="text-on-surface-variant font-mono text-[11px]">Load contacts to view rotation distribution</span>`;
         return;
     }
 
@@ -333,11 +333,11 @@ function updateRotationSummary() {
         summaryChips.innerHTML = counts.map((c, i) => {
             const color = colors[i % colors.length];
             return `<span class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-${color}-500/15 text-${color}-400 border border-${color}-500/30 font-mono">
-                رسالة #${i + 1}: ${c} أرقام
+                Message #${i + 1}: ${c} contacts
             </span>`;
-        }).join('') + `<span class="text-on-surface-variant font-mono text-[10px]">(إجمالي: ${activeIdx} رقم)</span>`;
+        }).join('') + `<span class="text-on-surface-variant font-mono text-[10px]">(Total: ${activeIdx} contacts)</span>`;
     } else {
-        summaryChips.innerHTML = `<span class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-primary/15 text-primary border border-primary/30 font-mono">قالب موحد لكافة الأرقام (${activeIdx} رقم)</span>`;
+        summaryChips.innerHTML = `<span class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-primary/15 text-primary border border-primary/30 font-mono">Single template for all contacts (${activeIdx} contacts)</span>`;
     }
 }
 
@@ -391,7 +391,7 @@ function applyDelayPreset(min, max, btnElem) {
     }
 
     onDelayConfigChange();
-    showToast(`تم تطبيق نمط الأمان: ${min} إلى ${max} ثوانٍ عشوائي`, 'success');
+    showToast(`Applied safety preset: ${min} to ${max}s random`, 'success');
 }
 
 function onDelayConfigChange() {
@@ -403,7 +403,7 @@ function onDelayConfigChange() {
     if (currentDelayMode === 'random') {
         const minVal = minInput ? minInput.value : 8;
         const maxVal = maxInput ? maxInput.value : 16;
-        if (badge) badge.textContent = `${minVal} - ${maxVal}s عشوائي`;
+        if (badge) badge.textContent = `${minVal} - ${maxVal}s Random`;
     } else {
         const fixVal = rangeInput ? rangeInput.value : 8;
         if (badge) badge.textContent = `${fixVal} SECONDS`;
@@ -434,23 +434,23 @@ function updateDelayPatternBadge() {
     if (currentDelayMode === 'random') {
         const minVal = document.getElementById('delay-min')?.value || 8;
         const maxVal = document.getElementById('delay-max')?.value || 16;
-        text = `عشوائي (${minVal}s - ${maxVal}s)`;
+        text = `Random (${minVal}s - ${maxVal}s)`;
     } else {
         const fixVal = document.getElementById('range-delay')?.value || 8;
         const jitt = document.getElementById('toggle-jitter')?.checked;
-        text = `${fixVal}s ${jitt ? '+ تذبذب' : 'ثابت'}`;
+        text = `${fixVal}s ${jitt ? '+ Jitter' : 'Fixed'}`;
     }
 
     if (currentTemplateMode === 'rotating') {
-        text += ` • تدوير ${rotatingTemplates.length} رسائل`;
+        text += ` • Rotate ${rotatingTemplates.length} templates`;
     } else {
-        text += ` • قالب موحد`;
+        text += ` • Single Template`;
     }
 
     if (isBatchRestEnabled) {
         const freq = document.getElementById('rest-frequency')?.value || 20;
         const dur = document.getElementById('rest-duration')?.value || 60;
-        text += ` [استراحة ${dur}s كل ${freq}]`;
+        text += ` [Break ${dur}s every ${freq}]`;
     }
 
     delayPatternText.textContent = text;
@@ -541,7 +541,7 @@ function useTemplatePreset(key) {
 
 function insertSpintaxSample() {
     const cur = messageTemplateInput.value;
-    messageTemplateInput.value = cur + " {مرحباً|أهلاً بك|أهلاً وسهلاً}";
+    messageTemplateInput.value = cur + " {Hello|Hi|Greetings}";
 }
 
 function quickAdvanceRange(step) {
@@ -561,6 +561,141 @@ function quickAdvanceRange(step) {
     rangeToInput.value = toVal;
     applyRangeFilter();
     addLog(`Advanced batch range to #${fromVal} - #${toVal}`, 'system');
+}
+
+function setAutoBatchMode(isAuto) {
+    const btnAuto = document.getElementById('btn-range-auto');
+    const btnManual = document.getElementById('btn-range-manual');
+    if (isAuto) {
+        if (btnAuto) {
+            btnAuto.className = 'range-mode-tab active py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-primary-container text-on-primary-container shadow-sm';
+        }
+        if (btnManual) {
+            btnManual.className = 'range-mode-tab py-1.5 px-3 rounded-lg text-xs font-semibold text-on-surface-variant hover:text-on-surface flex items-center justify-center gap-1.5 transition-all';
+        }
+        if (rangeFromInput) rangeFromInput.value = 1;
+        if (rangeToInput) rangeToInput.value = 100;
+        applyRangeFilter();
+        addLog('Set batch range to: 1 - 100 (Default Full Batch)', 'system');
+    } else {
+        if (btnManual) {
+            btnManual.className = 'range-mode-tab active py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-primary-container text-on-primary-container shadow-sm';
+        }
+        if (btnAuto) {
+            btnAuto.className = 'range-mode-tab py-1.5 px-3 rounded-lg text-xs font-semibold text-on-surface-variant hover:text-on-surface flex items-center justify-center gap-1.5 transition-all';
+        }
+    }
+}
+window.setAutoBatchMode = setAutoBatchMode;
+
+// Dynamic Group Management
+function getActiveGroupName() {
+    const saved = localStorage.getItem('activeCampaignGroupName');
+    if (saved && saved.trim()) return saved.trim();
+    const inputVal = document.getElementById('dash-group-name-input')?.value?.trim();
+    if (inputVal) return inputVal;
+    const modalVal = document.getElementById('import-group-name')?.value?.trim();
+    if (modalVal) return modalVal;
+    return 'Group-01';
+}
+
+function setActiveGroupName(name, updateInputs = true, showNotification = false) {
+    const cleanName = (name && name.trim()) ? name.trim() : 'Group-01';
+    localStorage.setItem('activeCampaignGroupName', cleanName);
+
+    const dashInput = document.getElementById('dash-group-name-input');
+    const dashBadge = document.getElementById('dash-group-name-badge');
+    const auditBadge = document.getElementById('dash-audit-group-badge');
+    const confBadge = document.getElementById('conf-group-badge');
+    const importInput = document.getElementById('import-group-name');
+
+    if (dashInput && updateInputs && dashInput.value !== cleanName) dashInput.value = cleanName;
+    if (dashBadge) dashBadge.textContent = cleanName;
+    if (auditBadge) auditBadge.textContent = cleanName;
+    if (confBadge) confBadge.textContent = cleanName;
+    if (importInput && updateInputs && importInput.value !== cleanName) importInput.value = cleanName;
+
+    if (allLoadedRecords && allLoadedRecords.length > 0) {
+        allLoadedRecords.forEach(r => {
+            if (!r.customGroup) r.groupName = cleanName;
+        });
+    }
+    if (slicedBatchRecords && slicedBatchRecords.length > 0) {
+        slicedBatchRecords.forEach(r => {
+            if (!r.customGroup) r.groupName = cleanName;
+        });
+    }
+
+    renderAuditDiagnosticsTable();
+    showActiveGroupPulse();
+
+    if (showNotification) {
+        showToast(`Group name activated: ${cleanName}`, 'success');
+        addLog(`Active group name set to: ${cleanName}`, 'system');
+    }
+}
+
+function activateCurrentGroupName() {
+    const input = document.getElementById('dash-group-name-input');
+    const val = input ? input.value.trim() : '';
+    setActiveGroupName(val || 'Group-01', true, true);
+}
+window.activateCurrentGroupName = activateCurrentGroupName;
+window.setActiveGroupName = setActiveGroupName;
+window.getActiveGroupName = getActiveGroupName;
+
+function showActiveGroupPulse() {
+    const ind = document.getElementById('dash-group-active-indicator');
+    if (ind) {
+        ind.classList.remove('active-glow-pulse');
+        void ind.offsetWidth;
+        ind.classList.add('active-glow-pulse');
+    }
+}
+
+// Micro Pulse Animation for Metric Numbers
+function setStatWithPulse(element, value) {
+    if (!element) return;
+    const strVal = String(value);
+    if (element.textContent !== strVal) {
+        element.textContent = strVal;
+        element.classList.remove('number-pulse');
+        void element.offsetWidth;
+        element.classList.add('number-pulse');
+    }
+}
+
+// Live update for Dashboard Column Stats
+function updateDashboardMiniStats() {
+    const list = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : (allLoadedRecords || []);
+    const sent = list.filter(r => r.status && r.status.includes('Sent')).length;
+    const failed = list.filter(r => r.status && (r.status.includes('Failed') || r.status.includes('No WhatsApp') || r.status.includes('Invalid'))).length;
+    const skipped = list.filter(r => r.status && r.status.includes('Skipped')).length;
+    const pending = list.filter(r => !r.status || r.status.includes('Pending')).length;
+
+    const statDelivered = document.getElementById('dash-stat-delivered');
+    const statIssues = document.getElementById('dash-stat-issues');
+    const statSkipped = document.getElementById('dash-stat-skipped');
+    const statPending = document.getElementById('dash-stat-pending');
+
+    setStatWithPulse(statDelivered, sent);
+    setStatWithPulse(statIssues, failed);
+    setStatWithPulse(statSkipped, skipped);
+    setStatWithPulse(statPending, pending);
+
+    const progCounts = document.getElementById('dash-progress-counts');
+    const progPct = document.getElementById('dash-progress-pct');
+    const progFill = document.getElementById('dash-progress-fill');
+    
+    if (!window.isDispatchJobRunning) {
+        const total = list.length;
+        const processed = sent + failed + skipped;
+        const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+        if (progCounts) progCounts.textContent = `${processed} / ${total} Contacts Dispatched`;
+        if (progPct) progPct.textContent = `${pct}%`;
+        if (progFill) progFill.style.width = `${pct}%`;
+    }
 }
 
 // ==========================================
@@ -631,7 +766,7 @@ function applyRangeFilter() {
             // retain existing status
         } else if (seenPhones.has(normPhone)) {
             rec.status = isGroup ? 'Skipped (Duplicate Group)' : 'Skipped (Duplicate Phone)';
-        } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز' && normName !== 'جروب واتساب') {
+        } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'dear customer' && normName !== 'whatsapp group') {
             rec.status = 'Skipped (Duplicate Name)';
         } else {
             seenPhones.add(normPhone);
@@ -652,6 +787,7 @@ function applyRangeFilter() {
     updateRotationSummary();
     updateDelayPatternBadge();
     renderAuditDiagnosticsTable();
+    updateDashboardMiniStats();
 }
 
 // Excel Upload Handler
@@ -678,11 +814,12 @@ function handleFileUpload(event) {
             let startIdx = 0;
             if (rows.length > 1 && isNaN(rows[0][1])) startIdx = 1;
 
-            const currentGrp = document.getElementById('import-group-name')?.value.trim() || 'Q8-B7-UIUX-21-G1';
-            const badge1 = document.getElementById('dash-group-name-badge');
-            const badge2 = document.getElementById('dash-audit-group-badge');
-            if (badge1) badge1.textContent = currentGrp;
-            if (badge2) badge2.textContent = currentGrp;
+            let currentGrp = getActiveGroupName();
+            const cleanFileName = file.name.replace(/\.[^/.]+$/, '').trim();
+            if ((!currentGrp || currentGrp === 'Group-01' || currentGrp === 'Q8-B7-UIUX-21-G1') && cleanFileName) {
+                currentGrp = cleanFileName;
+                setActiveGroupName(cleanFileName, true, false);
+            }
 
             for (let i = startIdx; i < rows.length; i++) {
                 const row = rows[i];
@@ -713,9 +850,10 @@ function handleFileUpload(event) {
             }
 
             rangeFromInput.value = 1;
-            rangeToInput.value = Math.min(15, allLoadedRecords.length);
+            rangeToInput.value = 100;
             applyRangeFilter();
-            addLog(`Loaded ${allLoadedRecords.length} contacts from ${file.name}.`, 'success');
+            updateDashboardMiniStats();
+            addLog(`Loaded ${allLoadedRecords.length} contacts from ${file.name}. (Active Range: 1 - 100)`, 'success');
         } catch (err) {
             console.error(err);
             alert('Error parsing Excel: ' + err.message);
@@ -737,11 +875,8 @@ function parseManualText() {
     const lines = text.split('\n');
     allLoadedRecords = [];
 
-    const currentGrp = document.getElementById('import-group-name')?.value.trim() || 'Q8-B7-UIUX-21-G1';
-    const badge1 = document.getElementById('dash-group-name-badge');
-    const badge2 = document.getElementById('dash-audit-group-badge');
-    if (badge1) badge1.textContent = currentGrp;
-    if (badge2) badge2.textContent = currentGrp;
+    const currentGrp = getActiveGroupName();
+    setActiveGroupName(currentGrp, true, false);
 
     lines.forEach((line, idx) => {
         const parts = line.split(/[,;\t]/);
@@ -771,9 +906,10 @@ function parseManualText() {
     });
 
     rangeFromInput.value = 1;
-    rangeToInput.value = Math.min(15, allLoadedRecords.length);
+    rangeToInput.value = 100;
     applyRangeFilter();
-    addLog(`Parsed ${allLoadedRecords.length} contacts from text.`, 'success');
+    updateDashboardMiniStats();
+    addLog(`Parsed ${allLoadedRecords.length} contacts from text. (Active Range: 1 - 100)`, 'success');
 }
 
 // Fetch Google Sheet
@@ -801,11 +937,8 @@ async function fetchGoogleSheetRecords() {
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || 'Failed to fetch Google Sheet.');
 
-        const currentGrp = document.getElementById('import-group-name')?.value.trim() || 'Q8-B7-UIUX-21-G1';
-        const badge1 = document.getElementById('dash-group-name-badge');
-        const badge2 = document.getElementById('dash-audit-group-badge');
-        if (badge1) badge1.textContent = currentGrp;
-        if (badge2) badge2.textContent = currentGrp;
+        const currentGrp = getActiveGroupName();
+        setActiveGroupName(currentGrp, true, false);
 
         allLoadedRecords = (data.records || []).map(r => ({
             ...r,
@@ -815,9 +948,10 @@ async function fetchGoogleSheetRecords() {
         }));
 
         rangeFromInput.value = 1;
-        rangeToInput.value = Math.min(15, allLoadedRecords.length);
+        rangeToInput.value = 100;
         applyRangeFilter();
-        addLog(`Fetched ${allLoadedRecords.length} records from Google Sheet.`, 'success');
+        updateDashboardMiniStats();
+        addLog(`Fetched ${allLoadedRecords.length} records from Google Sheet. (Active Range: 1 - 100)`, 'success');
         return true;
     } catch (error) {
         console.error(error);
@@ -1047,12 +1181,12 @@ function renderRecipientTable() {
             ];
             const colorClass = colors[(tNum - 1) % colors.length];
             if (item.status && item.status.includes('Sent')) {
-                patternBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${colorClass} font-mono shadow-sm" title="تم إرسال هذا القالب"><span class="material-symbols-outlined text-[12px]">done_all</span>رسالة #${tNum}</span>`;
+                patternBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${colorClass} font-mono shadow-sm" title="Template dispatched"><span class="material-symbols-outlined text-[12px]">done_all</span>Message #${tNum}</span>`;
             } else {
-                patternBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${colorClass} font-mono"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>رسالة #${tNum}</span>`;
+                patternBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${colorClass} font-mono"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>Message #${tNum}</span>`;
             }
         } else {
-            patternBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-surface-container text-on-surface-variant border border-outline-variant/30 font-mono">قالب موحد</span>`;
+            patternBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-surface-container text-on-surface-variant border border-outline-variant/30 font-mono">Single Template</span>`;
         }
 
         return `
@@ -1486,20 +1620,17 @@ function updateStartButtonState() {
 
 // Prompt user to edit group/campaign name on the dashboard badge
 function promptEditGroupName() {
-    const badge = document.getElementById('dash-group-name-badge');
-    const auditBadge = document.getElementById('dash-audit-group-badge');
-    const input = document.getElementById('import-group-name');
-    const current = badge ? badge.textContent : (input ? input.value : 'Q8-B7-UIUX-21-G1');
-    const newName = prompt('Enter Group / Campaign Name for this batch:\n(e.g. Q8-B7-UIUX-21-G1)', current);
+    const input = document.getElementById('dash-group-name-input');
+    if (input) {
+        input.focus();
+        input.select();
+        showToast('Type the group name in the input and press Enter or the check button to activate.', 'info');
+        return;
+    }
+    const current = getActiveGroupName();
+    const newName = prompt('Enter Group / Campaign Name for this batch:', current);
     if (newName && newName.trim()) {
-        const trimmed = newName.trim();
-        if (badge) badge.textContent = trimmed;
-        if (auditBadge) auditBadge.textContent = trimmed;
-        if (input) input.value = trimmed;
-        if (allLoadedRecords) allLoadedRecords.forEach(r => r.groupName = trimmed);
-        if (slicedBatchRecords) slicedBatchRecords.forEach(r => r.groupName = trimmed);
-        renderAuditDiagnosticsTable();
-        showToast(`Group name updated to: ${trimmed}`, 'success');
+        setActiveGroupName(newName.trim(), true, true);
     }
 }
 
@@ -1534,8 +1665,7 @@ function renderAuditDiagnosticsTable() {
     if (!tbody) return;
 
     const records = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : allLoadedRecords;
-    const groupInput = document.getElementById('import-group-name');
-    const fallbackGroup = (groupInput && groupInput.value.trim()) ? groupInput.value.trim() : 'Q8-B7-UIUX-21-G1';
+    const fallbackGroup = getActiveGroupName();
 
     const auditBadge = document.getElementById('dash-audit-group-badge');
     const activeGroup = (records && records[0] && records[0].groupName) ? records[0].groupName : fallbackGroup;
@@ -2006,7 +2136,7 @@ function startDelayCountdown(seconds, isBreak = false, breakText = '') {
     const delayPatternText = document.getElementById('delay-pattern-text');
     
     if (isBreak && delayPatternText) {
-        delayPatternText.textContent = breakText || `☕ استراحة أمان دورية (${seconds}s)...`;
+        delayPatternText.textContent = breakText || `☕ Safety Rest Pause (${seconds}s)...`;
     } else {
         updateDelayPatternBadge();
     }
@@ -2066,10 +2196,14 @@ function updateProgressBar(job) {
         }
     }
 
-    // Update group name badge if job has groupName
+    window.isDispatchJobRunning = Boolean(job.isRunning);
+
+    // Update group name badge and input if job has groupName
     if (job.groupName) {
         const badge = document.getElementById('dash-group-name-badge');
         if (badge) badge.textContent = job.groupName;
+        const input = document.getElementById('dash-group-name-input');
+        if (input && document.activeElement !== input) input.value = job.groupName;
         const auditBadge = document.getElementById('dash-audit-group-badge');
         if (auditBadge) auditBadge.textContent = job.groupName;
     }
@@ -2080,15 +2214,15 @@ function updateProgressBar(job) {
         dashTemplateTag.textContent = `Message #${activeTemplateNum}`;
     }
 
-    // Dashboard micro-stats
+    // Dashboard column stats with pulse animation
     const statDelivered = document.getElementById('dash-stat-delivered');
     const statIssues = document.getElementById('dash-stat-issues');
     const statSkipped = document.getElementById('dash-stat-skipped');
     const statPending = document.getElementById('dash-stat-pending');
-    if (statDelivered) statDelivered.textContent = sent;
-    if (statIssues) statIssues.textContent = failed;
-    if (statSkipped) statSkipped.textContent = skipped;
-    if (statPending) statPending.textContent = pending;
+    setStatWithPulse(statDelivered, sent);
+    setStatWithPulse(statIssues, failed);
+    setStatWithPulse(statSkipped, skipped);
+    setStatWithPulse(statPending, pending);
 }
 
 // ==========================================
@@ -2102,14 +2236,14 @@ if (btnStart) {
         if (currentTemplateMode === 'rotating') {
             activeTemplates = rotatingTemplates.map(t => t.trim()).filter(t => t.length > 0);
             if (activeTemplates.length === 0) {
-                showToast('يرجى إدخال نص رسالة واحدة على الأقل في قوالب التدوير الدوري.', 'warning');
+                showToast('Please enter at least one message template in cyclic rotation.', 'warning');
                 return;
             }
             messageTemplate = activeTemplates[0];
         } else {
             messageTemplate = messageTemplateInput ? messageTemplateInput.value.trim() : '';
             if (!messageTemplate) {
-                showToast('يرجى إدخال نص الرسالة في تبويب الإعدادات.', 'warning');
+                showToast('Please enter message text in the settings tab.', 'warning');
                 return;
             }
             activeTemplates = [messageTemplate];
@@ -2308,19 +2442,43 @@ function initSettingsUI() {
     updateRotationSummary();
     renderAuditDiagnosticsTable();
 
-    const groupNameInput = document.getElementById('import-group-name');
-    if (groupNameInput) {
-        groupNameInput.addEventListener('input', () => {
-            const val = groupNameInput.value.trim() || 'Q8-B7-UIUX-21-G1';
-            const b1 = document.getElementById('dash-group-name-badge');
-            const b2 = document.getElementById('dash-audit-group-badge');
-            if (b1) b1.textContent = val;
-            if (b2) b2.textContent = val;
-            if (allLoadedRecords) allLoadedRecords.forEach(r => { if (!r.customGroup) r.groupName = val; });
-            if (slicedBatchRecords) slicedBatchRecords.forEach(r => { if (!r.customGroup) r.groupName = val; });
-            renderAuditDiagnosticsTable();
+    // Initialize active group name from localStorage or inputs
+    const initialGroup = getActiveGroupName();
+    setActiveGroupName(initialGroup, true, false);
+
+    const dashGroupInput = document.getElementById('dash-group-name-input');
+    if (dashGroupInput) {
+        dashGroupInput.addEventListener('input', (e) => {
+            setActiveGroupName(e.target.value, false, false);
+        });
+        dashGroupInput.addEventListener('change', (e) => {
+            setActiveGroupName(e.target.value, true, true);
+        });
+        dashGroupInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                activateCurrentGroupName();
+                dashGroupInput.blur();
+            }
         });
     }
+
+    const modalGroupNameInput = document.getElementById('import-group-name');
+    if (modalGroupNameInput) {
+        modalGroupNameInput.addEventListener('input', (e) => {
+            setActiveGroupName(e.target.value, true, false);
+        });
+    }
+
+    // End Row default to 100 always
+    if (rangeToInput) {
+        rangeToInput.value = 100;
+    }
+    if (rangeFromInput && !rangeFromInput.value) {
+        rangeFromInput.value = 1;
+    }
+
+    updateDashboardMiniStats();
 }
 
 // Event listener for template input live preview & app initialization

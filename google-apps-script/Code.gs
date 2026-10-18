@@ -68,7 +68,7 @@ function getContactsData(fromIndex, toIndex) {
     let contactStatus = 'Pending Batch';
     const normName = rawName.toLowerCase();
 
-    if (status.toLowerCase().includes('sent') || status.toLowerCase().includes('تم')) {
+    if (status.toLowerCase().includes('sent')) {
       contactStatus = 'Skipped (Already Sent)';
       sentCount++;
     } else if (cleanPhone.length < 8) {
@@ -76,7 +76,7 @@ function getContactsData(fromIndex, toIndex) {
     } else if (phoneSet.has(cleanPhone)) {
       contactStatus = 'Skipped (Duplicate Phone)';
       duplicatePhoneCount++;
-    } else if (nameSet.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز') {
+    } else if (nameSet.has(normName) && normName !== 'customer' && normName !== 'dear customer') {
       contactStatus = 'Skipped (Duplicate Name)';
       duplicateNameCount++;
     } else {

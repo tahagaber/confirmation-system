@@ -114,7 +114,7 @@ The server initializes the WhatsApp Web Puppeteer client and starts listening at
 ## 🔑 Core Features
 
 ### 📥 Multi-Source Contact Ingestion
-- **Google Sheets** — Paste any public or shared Google Sheet URL. The system auto-extracts the Spreadsheet ID and dynamically resolves the sheet tab name (supports Arabic tab names like `جدول_1`).
+- **Google Sheets** — Paste any public or shared Google Sheet URL. The system auto-extracts the Spreadsheet ID and dynamically resolves the sheet tab name (supports multilingual tab names like `Table_1`).
 - **Excel / CSV Upload** — Drag & drop `.xlsx` or `.csv` files directly into the browser.
 - **Manual Text Input** — Paste raw `Name, Phone` pairs or plain phone numbers.
 

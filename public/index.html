@@ -131,6 +131,54 @@
             height: 100%;
             opacity: 0.4;
         }
+
+        /* Stat Column Cards - Rising up animation */
+        @keyframes columnRiseUp {
+            0% {
+                opacity: 0;
+                transform: translateY(28px) scale(0.95);
+            }
+            60% {
+                opacity: 0.95;
+                transform: translateY(-3px) scale(1.01);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .stat-column-card {
+            animation: columnRiseUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+            will-change: transform, opacity;
+        }
+
+        .stat-column-card:hover {
+            transform: translateY(-5px) scale(1.015);
+        }
+
+        .stat-col-delay-1 { animation-delay: 0.06s; }
+        .stat-col-delay-2 { animation-delay: 0.16s; }
+        .stat-col-delay-3 { animation-delay: 0.26s; }
+        .stat-col-delay-4 { animation-delay: 0.36s; }
+
+        @keyframes numberTickPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.12); filter: brightness(1.2); }
+            100% { transform: scale(1); }
+        }
+        .number-pulse {
+            animation: numberTickPulse 0.35s ease-out;
+        }
+
+        @keyframes activeGlowPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(78, 222, 163, 0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(78, 222, 163, 0); }
+        }
+        .active-glow-pulse {
+            animation: activeGlowPulse 2s infinite;
+        }
     </style>
 </head>
 <body class="bg-background font-sans text-on-background antialiased min-h-screen">
@@ -347,72 +395,168 @@
                 </div>
 
                 <!-- Live Campaign Progress Bar & Active Group Monitor -->
-                <div class="bg-surface-container-high/80 border border-outline-variant/30 p-6 rounded-3xl shadow-lg relative overflow-hidden space-y-4">
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold">
+                <div class="bg-gradient-to-b from-surface-container-high/90 via-surface-container/95 to-surface-container-high/90 backdrop-blur-xl border border-outline-variant/40 p-6 md:p-7 rounded-3xl shadow-2xl relative overflow-hidden space-y-6">
+                    <!-- Subtle Ambient Lighting Orbs -->
+                    <div class="absolute -top-24 -right-24 w-72 h-72 bg-primary/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div class="absolute -bottom-24 -left-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                    <!-- Header Row -->
+                    <div class="flex flex-wrap items-center justify-between gap-4 relative z-10">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-11 h-11 rounded-2xl bg-primary/20 text-primary border border-primary/30 flex items-center justify-center font-bold shadow-[0_0_15px_rgba(78,222,163,0.25)]">
                                 <span class="material-symbols-outlined text-[24px]">flag</span>
                             </div>
                             <div>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Active Target Group:</span>
-                                    <span id="dash-group-name-badge" class="font-mono text-xs font-black text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-md">Q8-B7-UIUX-21-G1</span>
-                                    <button type="button" onclick="promptEditGroupName()" class="text-on-surface-variant hover:text-primary p-0.5 rounded transition-all" title="Change Active Group Name">
-                                        <span class="material-symbols-outlined text-[14px]">edit</span>
-                                    </button>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="text-[10px] font-extrabold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                                        <span>Active Target Group:</span>
+                                    </span>
+                                    
+                                    <!-- Interactive Dynamic Group Name Pill -->
+                                    <div class="relative flex items-center group">
+                                        <input 
+                                            type="text" 
+                                            id="dash-group-name-input" 
+                                            class="bg-surface-container hover:bg-surface-container-highest focus:bg-surface-container-highest border border-primary/50 focus:border-primary text-primary font-mono text-xs font-black px-3 py-1 pr-8 rounded-lg outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-inner tracking-wider w-44 sm:w-56" 
+                                            placeholder="Enter group name..." 
+                                            value="Group-01"
+                                            title="Click to edit - saved and activated instantly"
+                                        />
+                                        <!-- Hidden element to keep backwards compatibility with anything reading textContent -->
+                                        <span id="dash-group-name-badge" class="hidden">Group-01</span>
+                                        <button 
+                                            type="button" 
+                                            onclick="activateCurrentGroupName()" 
+                                            class="absolute right-1 text-primary/70 hover:text-white hover:bg-primary/30 p-1 rounded-md transition-all flex items-center justify-center" 
+                                            title="Activate this name for current batch">
+                                            <span class="material-symbols-outlined text-[15px]">check_circle</span>
+                                        </button>
+                                    </div>
+
+                                    <!-- Active Status Badge -->
+                                    <span id="dash-group-active-indicator" class="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/30 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-[0_0_10px_rgba(78,222,163,0.15)] active-glow-pulse">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                        <span>Active</span>
+                                    </span>
                                 </div>
-                                <h3 class="text-sm font-bold text-on-surface mt-0.5">Automated Bulk Dispatch & Real-Time Progress</h3>
+                                <h3 class="text-sm font-bold text-on-surface mt-1 flex items-center gap-2">
+                                    <span>Automated Bulk Dispatch & Real-Time Progress</span>
+                                </h3>
                             </div>
                         </div>
 
                         <div class="flex items-center gap-3">
-                            <span id="dash-live-dispatch-badge" class="px-3.5 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary border border-primary/25 flex items-center gap-2">
+                            <span id="dash-live-dispatch-badge" class="px-3.5 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary border border-primary/25 flex items-center gap-2 shadow-sm">
                                 <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
                                 <span>Engine Ready</span>
                             </span>
-                            <span id="dash-current-template-tag" class="text-xs font-mono font-bold text-cyan-400 bg-cyan-400/10 border border-cyan-400/25 px-3 py-1.5 rounded-full">
+                            <span id="dash-current-template-tag" class="text-xs font-mono font-bold text-cyan-400 bg-cyan-400/10 border border-cyan-400/25 px-3.5 py-1.5 rounded-full shadow-sm">
                                 Message #1
                             </span>
                         </div>
                     </div>
 
                     <!-- Progress Bar Component -->
-                    <div class="space-y-2">
+                    <div class="space-y-2 relative z-10">
                         <div class="flex items-center justify-between text-xs font-mono">
-                            <div class="flex items-center gap-2">
-                                <span id="dash-progress-pct" class="text-2xl font-black text-on-surface font-sans">0%</span>
+                            <div class="flex items-center gap-2.5">
+                                <span id="dash-progress-pct" class="text-2xl font-black text-on-surface font-sans tracking-tight">0%</span>
                                 <span class="text-on-surface-variant font-sans font-semibold">Completed</span>
                             </div>
-                            <span id="dash-progress-counts" class="text-on-surface-variant font-semibold">0 / 0 Contacts Dispatched</span>
+                            <span id="dash-progress-counts" class="text-on-surface-variant font-semibold bg-surface-container/60 px-3 py-1 rounded-full border border-outline-variant/30">0 / 0 Contacts Dispatched</span>
                         </div>
 
                         <!-- High contrast dual-tone animated bar -->
-                        <div class="w-full bg-surface-container rounded-full h-3.5 p-0.5 overflow-hidden border border-outline-variant/30">
-                            <div id="dash-progress-fill" class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-primary transition-all duration-500 ease-out shadow-[0_0_12px_rgba(78,222,163,0.4)]" style="width: 0%;"></div>
+                        <div class="w-full bg-surface-container rounded-full h-3.5 p-0.5 overflow-hidden border border-outline-variant/40 shadow-inner">
+                            <div id="dash-progress-fill" class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-primary transition-all duration-500 ease-out shadow-[0_0_14px_rgba(78,222,163,0.5)]" style="width: 0%;"></div>
                         </div>
                     </div>
 
-                    <!-- Micro stats row -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
-                        <div class="bg-surface-container/60 p-2.5 rounded-xl border border-outline-variant/20 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(78,222,163,0.8)]"></span>
-                            <span class="text-on-surface-variant">Delivered:</span>
-                            <span class="font-mono font-bold text-emerald-400 ml-auto" id="dash-stat-delivered">0</span>
+                    <!-- Micro stats row: REDESIGNED AS HIGH-TECH COLUMNS WITH RICH COLORS & SLIDE-UP ANIMATIONS -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5 pt-1 relative z-10">
+                        <!-- Column 1: Delivered -->
+                        <div class="stat-column-card stat-col-delay-1 group relative overflow-hidden bg-gradient-to-b from-emerald-500/[0.12] via-surface-container to-emerald-950/[0.30] border border-emerald-500/30 hover:border-emerald-400/70 p-4 rounded-2xl flex flex-col justify-between transition-all duration-300 hover:shadow-[0_10px_28px_rgba(16,185,129,0.22)]">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="material-symbols-outlined text-emerald-400 text-[18px]">mark_email_read</span>
+                                    <span class="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider">Delivered</span>
+                                </div>
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse"></span>
+                            </div>
+                            <div class="font-mono text-3xl md:text-4xl font-black text-emerald-300 drop-shadow-[0_0_14px_rgba(52,211,153,0.4)] my-2 tracking-tight group-hover:scale-105 transition-transform" id="dash-stat-delivered">0</div>
+                            <div>
+                                <div class="text-[10px] text-emerald-300/80 font-semibold flex items-center justify-between">
+                                    <span>Successfully Sent</span>
+                                    <span class="text-[9px] font-bold bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono">OK</span>
+                                </div>
+                                <div class="w-full h-1 bg-emerald-500/20 rounded-full mt-2 overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-emerald-500 to-teal-300 rounded-full w-full"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="bg-surface-container/60 p-2.5 rounded-xl border border-outline-variant/20 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(251,113,133,0.8)]"></span>
-                            <span class="text-on-surface-variant">Issues / Failed:</span>
-                            <span class="font-mono font-bold text-rose-400 ml-auto" id="dash-stat-issues">0</span>
+
+                        <!-- Column 2: Issues / Failed -->
+                        <div class="stat-column-card stat-col-delay-2 group relative overflow-hidden bg-gradient-to-b from-rose-500/[0.12] via-surface-container to-rose-950/[0.30] border border-rose-500/30 hover:border-rose-400/70 p-4 rounded-2xl flex flex-col justify-between transition-all duration-300 hover:shadow-[0_10px_28px_rgba(244,63,94,0.22)]">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="material-symbols-outlined text-rose-400 text-[18px]">report_problem</span>
+                                    <span class="text-[11px] font-extrabold text-rose-400 uppercase tracking-wider">Issues / Failed</span>
+                                </div>
+                                <span class="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.9)]"></span>
+                            </div>
+                            <div class="font-mono text-3xl md:text-4xl font-black text-rose-300 drop-shadow-[0_0_14px_rgba(251,113,133,0.4)] my-2 tracking-tight group-hover:scale-105 transition-transform" id="dash-stat-issues">0</div>
+                            <div>
+                                <div class="text-[10px] text-rose-300/80 font-semibold flex items-center justify-between">
+                                    <span>Failed / No WhatsApp</span>
+                                    <span class="text-[9px] font-bold bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-mono">Alert</span>
+                                </div>
+                                <div class="w-full h-1 bg-rose-500/20 rounded-full mt-2 overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-rose-500 to-red-400 rounded-full w-full"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="bg-surface-container/60 p-2.5 rounded-xl border border-outline-variant/20 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-purple-400"></span>
-                            <span class="text-on-surface-variant">Skipped:</span>
-                            <span class="font-mono font-bold text-purple-400 ml-auto" id="dash-stat-skipped">0</span>
+
+                        <!-- Column 3: Skipped -->
+                        <div class="stat-column-card stat-col-delay-3 group relative overflow-hidden bg-gradient-to-b from-purple-500/[0.12] via-surface-container to-purple-950/[0.30] border border-purple-500/30 hover:border-purple-400/70 p-4 rounded-2xl flex flex-col justify-between transition-all duration-300 hover:shadow-[0_10px_28px_rgba(168,85,247,0.22)]">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="material-symbols-outlined text-purple-400 text-[18px]">filter_alt_off</span>
+                                    <span class="text-[11px] font-extrabold text-purple-400 uppercase tracking-wider">Skipped</span>
+                                </div>
+                                <span class="w-2 h-2 rounded-full bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.9)]"></span>
+                            </div>
+                            <div class="font-mono text-3xl md:text-4xl font-black text-purple-300 drop-shadow-[0_0_14px_rgba(192,132,252,0.4)] my-2 tracking-tight group-hover:scale-105 transition-transform" id="dash-stat-skipped">0</div>
+                            <div>
+                                <div class="text-[10px] text-purple-300/80 font-semibold flex items-center justify-between">
+                                    <span>Duplicates / Opt-Outs</span>
+                                    <span class="text-[9px] font-bold bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded font-mono">Filtered</span>
+                                </div>
+                                <div class="w-full h-1 bg-purple-500/20 rounded-full mt-2 overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-purple-500 to-fuchsia-400 rounded-full w-full"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="bg-surface-container/60 p-2.5 rounded-xl border border-outline-variant/20 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                            <span class="text-on-surface-variant">Pending Queue:</span>
-                            <span class="font-mono font-bold text-cyan-400 ml-auto" id="dash-stat-pending">0</span>
+
+                        <!-- Column 4: Pending Queue -->
+                        <div class="stat-column-card stat-col-delay-4 group relative overflow-hidden bg-gradient-to-b from-cyan-500/[0.12] via-surface-container to-cyan-950/[0.30] border border-cyan-500/30 hover:border-cyan-400/70 p-4 rounded-2xl flex flex-col justify-between transition-all duration-300 hover:shadow-[0_10px_28px_rgba(6,182,212,0.22)]">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="material-symbols-outlined text-cyan-400 text-[18px]">hourglass_top</span>
+                                    <span class="text-[11px] font-extrabold text-cyan-400 uppercase tracking-wider">Pending Queue</span>
+                                </div>
+                                <span class="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.9)]"></span>
+                            </div>
+                            <div class="font-mono text-3xl md:text-4xl font-black text-cyan-300 drop-shadow-[0_0_14px_rgba(34,211,238,0.4)] my-2 tracking-tight group-hover:scale-105 transition-transform" id="dash-stat-pending">0</div>
+                            <div>
+                                <div class="text-[10px] text-cyan-300/80 font-semibold flex items-center justify-between">
+                                    <span>Ready in Batch</span>
+                                    <span class="text-[9px] font-bold bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded font-mono">Queue</span>
+                                </div>
+                                <div class="w-full h-1 bg-cyan-500/20 rounded-full mt-2 overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-cyan-500 to-sky-300 rounded-full w-full"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -591,7 +735,7 @@
                             <div>
                                 <h4 class="font-bold text-base text-on-surface flex items-center gap-2">
                                     <span>Group Delivery Audit & Diagnostics</span>
-                                    <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-md bg-surface-container-highest text-primary border border-outline-variant/30" id="dash-audit-group-badge">Q8-B7-UIUX-21-G1</span>
+                                    <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-md bg-surface-container-highest text-primary border border-outline-variant/30" id="dash-audit-group-badge">Group-01</span>
                                 </h4>
                                 <p class="text-xs text-on-surface-variant">Real-time verification of who was successfully reached, who failed, and precise error reasons.</p>
                             </div>
@@ -650,7 +794,7 @@
                         </div>
                         <span class="text-on-surface-variant text-[11px] font-mono uppercase bg-surface-container px-3 py-1 rounded-lg border border-outline-variant/20 flex items-center gap-1.5">
                             <span class="material-symbols-outlined text-[15px] text-primary">bookmark</span>
-                            <span>GROUP: <strong id="conf-group-badge" class="text-primary font-bold">Q8-B7-UIUX-21-G1</strong></span>
+                            <span>GROUP: <strong id="conf-group-badge" class="text-primary font-bold">Group-01</strong></span>
                         </span>
                     </div>
 
@@ -1224,10 +1368,10 @@
                         <span class="text-[10px] font-mono text-primary font-bold bg-primary/10 px-2.5 py-0.5 rounded">BATCH TAG</span>
                     </div>
                     <div class="relative">
-                        <input type="text" id="import-group-name" value="Q8-B7-UIUX-21-G1" placeholder="e.g. Q8-B7-UIUX-21-G1, Batch-2024-GroupA" class="w-full bg-surface-container border border-outline-variant/40 p-3 rounded-xl font-mono text-xs text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 outline-none transition-all placeholder:text-on-surface-variant/40"/>
+                        <input type="text" id="import-group-name" value="Group-01" placeholder="e.g. Batch-100, Customers-Oct" class="w-full bg-surface-container border border-outline-variant/40 p-3 rounded-xl font-mono text-xs text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 outline-none transition-all placeholder:text-on-surface-variant/40"/>
                     </div>
                     <p class="text-[11px] text-on-surface-variant leading-relaxed">
-                        Tag this batch with your group identifier (e.g. <strong class="text-primary">Q8-B7-UIUX-21-G1</strong>). Tracks group delivery progress, identifies contacts, and logs specific delivery diagnostics in your Dashboard.
+                        Tag this batch with your group identifier (e.g. <strong class="text-primary">Batch-100</strong>). Tracks group delivery progress, identifies contacts, and logs specific delivery diagnostics in your Dashboard.
                     </p>
                 </div>
 

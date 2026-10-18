@@ -379,12 +379,12 @@ async function runBulkSender() {
         item.templateIndex = templateIndex;
         item.templateNum = templateIndex + 1;
 
-        const patternTag = currentJob.rotationMode ? `[رسالة #${item.templateNum}] ` : '';
+        const patternTag = currentJob.rotationMode ? `[Message #${item.templateNum}] ` : '';
         console.log(`Sending message ${patternTag}to ${isGroup ? 'Group: ' : ''}${item.name} (${item.phone})...`);
         io.emit('job-status', { 
             type: 'progress', 
             job: currentJob, 
-            log: `جاري إرسال ${patternTag}إلى ${isGroup ? 'جروب: ' : ''}${item.name} (#${item.sheetRowIndex})...` 
+            log: `Sending ${patternTag}to ${isGroup ? 'Group: ' : ''}${item.name} (#${item.sheetRowIndex})...` 
         });
 
         let wwebJid = null;
@@ -408,8 +408,8 @@ async function runBulkSender() {
             let personalizedMessage = parseSpintax(rawTemplate);
             personalizedMessage = personalizedMessage.replace(/{name}/gi, item.name || 'Customer');
             personalizedMessage = personalizedMessage.replace(/{phone}/gi, item.phone || '');
-            personalizedMessage = personalizedMessage.replace(/{date}/gi, new Date().toLocaleDateString('ar-EG'));
-            personalizedMessage = personalizedMessage.replace(/{time}/gi, new Date().toLocaleTimeString('ar-EG'));
+            personalizedMessage = personalizedMessage.replace(/{date}/gi, new Date().toLocaleDateString('en-US'));
+            personalizedMessage = personalizedMessage.replace(/{time}/gi, new Date().toLocaleTimeString('en-US'));
             
             // Check if target is registered on WhatsApp (Only for individual chats, NOT groups)
             let isRegistered = true;
@@ -427,7 +427,7 @@ async function runBulkSender() {
                 item.status = 'Failed (No WhatsApp)';
                 currentJob.failed++;
                 console.log(`Contact ${item.name} (${item.phone}) is not registered on WhatsApp.`);
-                io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ ${item.name} (${item.phone}): الرقم غير مسجل على واتساب!` });
+                io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ ${item.name} (${item.phone}): Number not registered on WhatsApp!` });
             } else {
                 await wwebClient.sendMessage(wwebJid, personalizedMessage);
                 item.status = 'Sent';
@@ -437,14 +437,14 @@ async function runBulkSender() {
                 io.emit('job-status', { 
                     type: 'progress', 
                     job: currentJob, 
-                    log: `✅ تم إرسال ${patternTag}بنجاح إلى ${isGroup ? 'جروب: ' : ''}${item.name} (${item.phone})` 
+                    log: `✅ Successfully sent ${patternTag}to ${isGroup ? 'Group: ' : ''}${item.name} (${item.phone})` 
                 });
             }
         } catch (error) {
             console.error(`Error sending message to ${item.name}:`, error.message);
             item.status = `Failed (${error.message.includes('not registered') ? 'No WhatsApp' : error.message})`;
             currentJob.failed++;
-            io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ فشل الإرسال إلى ${item.name}: ${error.message}` });
+            io.emit('job-status', { type: 'progress', job: currentJob, log: `❌ Failed to send to ${item.name}: ${error.message}` });
         }
 
         activeSendCount++;
@@ -460,7 +460,7 @@ async function runBulkSender() {
             if (currentJob.pauseAfterCount > 0 && currentJob.pauseDurationSec > 0 && currentJob.sent > 0 && (currentJob.sent % currentJob.pauseAfterCount === 0)) {
                 delaySeconds = currentJob.pauseDurationSec;
                 isBreak = true;
-                breakText = `☕ استراحة أمان دورية (${delaySeconds} ثانية) لحماية الحساب بعد إرسال ${currentJob.sent} رسالة`;
+                breakText = `☕ Periodic safety pause (${delaySeconds}s) to protect account after sending ${currentJob.sent} messages`;
                 console.log(`[Anti-Spam Break] ${breakText}`);
                 io.emit('job-status', { 
                     type: 'delay', 
@@ -744,7 +744,7 @@ app.post('/api/preview-sheet', async (req, res) => {
 
                 if (!phone && isGroupTarget(name)) {
                     phone = name;
-                    name = 'جروب واتساب';
+                    name = 'WhatsApp Group';
                     isGroup = true;
                 }
             }
@@ -754,7 +754,7 @@ app.post('/api/preview-sheet', async (req, res) => {
             if (isGroup || isGroupTarget(phone)) {
                 isGroup = true;
                 if (!name || name === 'Customer') {
-                    name = 'جروب واتساب';
+                    name = 'WhatsApp Group';
                 }
             }
 
@@ -766,7 +766,7 @@ app.post('/api/preview-sheet', async (req, res) => {
                 rowStatus = isGroup ? 'Invalid Group Link' : 'Invalid Phone';
             } else if (seenPhones.has(wwebJid)) {
                 rowStatus = isGroup ? 'Skipped (Duplicate Group)' : 'Skipped (Duplicate Phone)';
-            } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز' && normName !== 'جروب واتساب') {
+            } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'dear customer' && normName !== 'whatsapp group') {
                 rowStatus = 'Skipped (Duplicate Name)';
             } else {
                 seenPhones.add(wwebJid);
@@ -857,7 +857,7 @@ app.post('/api/send-custom-list', async (req, res) => {
             status = isGroup ? 'Failed (Invalid Group Link)' : 'Failed (Invalid Phone)';
         } else if (seenPhones.has(wwebJid)) {
             status = isGroup ? 'Skipped (Duplicate Group)' : 'Skipped (Duplicate Phone)';
-        } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'عميلنا العزيز' && normName !== 'جروب واتساب') {
+        } else if (seenNames.has(normName) && normName !== 'customer' && normName !== 'dear customer' && normName !== 'whatsapp group') {
             status = 'Skipped (Duplicate Name)';
         } else {
             seenPhones.add(wwebJid);
