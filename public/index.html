@@ -210,6 +210,14 @@
                 <span class="sidebar-text text-sm">Confirmation System</span>
             </button>
             
+            <button onclick="switchMainTab('attendance-mentions', this)" class="nav-tab-btn w-full flex items-center px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all font-medium group">
+                <span class="material-symbols-outlined mr-3 text-[22px] text-rose-400 group-hover:scale-110 transition-transform">how_to_reg</span>
+                <span class="sidebar-text text-sm flex items-center justify-between flex-1">
+                    <span>Absent & Group Mention</span>
+                    <span class="text-[9px] font-mono bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded-full font-bold">NEW</span>
+                </span>
+            </button>
+            
             <button onclick="switchMainTab('whatsapp-auth', this)" class="nav-tab-btn w-full flex items-center px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all font-medium">
                 <span class="material-symbols-outlined mr-3 text-[22px]">qr_code_scanner</span>
                 <span class="sidebar-text text-sm">WhatsApp Auth</span>
@@ -902,8 +910,16 @@
                                 <p class="text-[10px] text-on-surface-variant">Manage, search, and filter your dispatch list</p>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <span id="displayed-count-label" class="text-[10px] font-mono text-on-surface-variant bg-surface-container px-2.5 py-1 rounded-lg border border-outline-variant/20">0 contacts loaded</span>
+                            <button onclick="exportGoogleContactsVCF()" class="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm" title="Save Contacts to Google Contacts formatted as: Name (Group)">
+                                <span class="material-symbols-outlined text-[16px]">contact_phone</span>
+                                <span>Google Contacts (.vcf)</span>
+                            </button>
+                            <button onclick="openAbsentMentionModal()" class="flex items-center gap-1.5 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm" title="Send WhatsApp Group Mention to Absent Members">
+                                <span class="material-symbols-outlined text-[16px]">campaign</span>
+                                <span>Mention Absent (<span id="absent-header-count">0</span>)</span>
+                            </button>
                             <button onclick="exportBatchToExcel()" class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-highest px-3 py-1.5 rounded-xl border border-outline-variant/30 text-xs font-bold text-primary transition-all">
                                 <span class="material-symbols-outlined text-[16px]">download</span>
                                 <span>Export</span>
@@ -911,15 +927,48 @@
                         </div>
                     </div>
 
+                    <!-- Attendance & WhatsApp Group Link Control Bar -->
+                    <div class="px-6 py-3 bg-surface-container/30 border-y border-outline-variant/15 flex flex-wrap items-center justify-between gap-4">
+                        <!-- Attendance Summary Counters -->
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-[11px] font-bold text-on-surface-variant flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[15px] text-primary">fact_check</span> Attendance:
+                            </span>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/30 text-[11px] font-mono text-on-surface">
+                                Total: <strong id="att-summary-total" class="text-primary font-bold">0</strong>
+                            </span>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-mono text-emerald-400">
+                                ✓ Present: <strong id="att-summary-present" class="font-bold">0</strong>
+                            </span>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-[11px] font-mono text-rose-400">
+                                ❌ Absent: <strong id="att-summary-absent" class="font-bold">0</strong>
+                            </span>
+                        </div>
+
+                        <!-- WhatsApp Group Link (Col D in Sheet) -->
+                        <div class="flex-1 min-w-[280px] max-w-xl flex items-center gap-2 bg-surface-container/70 border border-outline-variant/30 rounded-xl px-3 py-1.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/40 transition-all">
+                            <span class="material-symbols-outlined text-[16px] text-cyan-400 flex-shrink-0">groups</span>
+                            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider whitespace-nowrap">Group Link (Col D):</span>
+                            <input type="text" id="attendance-group-link" placeholder="Paste WhatsApp Group Invite Link (reads from Col D / Comment)" class="w-full bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/40" oninput="onGroupLinkChange(this.value)" />
+                            <span id="group-link-detect-badge" class="hidden text-[9px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-1.5 py-0.5 rounded uppercase">Detected</span>
+                        </div>
+                    </div>
+
                     <!-- Search & Filter Bar -->
-                    <div class="px-6 pb-3 flex flex-wrap items-center gap-3">
+                    <div class="px-6 py-3 flex flex-wrap items-center gap-3">
                         <div class="flex-1 min-w-[220px] relative">
                             <span class="material-symbols-outlined text-[18px] text-on-surface-variant absolute left-3 top-1/2 -translate-y-1/2">search</span>
                             <input type="text" id="contacts-search-input" placeholder="Search by name, phone, or status..." oninput="filterContactsTable()" class="w-full bg-surface-container border border-outline-variant/30 pl-10 pr-4 py-2.5 rounded-xl text-xs text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 outline-none transition-all placeholder:text-on-surface-variant/50"/>
                         </div>
-                        <div class="flex items-center gap-1.5">
+                        <div class="flex flex-wrap items-center gap-1.5">
                             <button class="tab-btn active px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary font-bold text-[11px] transition-all" onclick="switchTableTab('all', this)">
                                 All
+                            </button>
+                            <button class="tab-btn px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/20 text-on-surface-variant font-bold text-[11px] hover:bg-rose-400/10 hover:text-rose-400 hover:border-rose-400/30 transition-all flex items-center gap-1" onclick="switchTableTab('absent', this)">
+                                ❌ Absent <span id="absent-badge" class="bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded-full text-[9px] font-mono">0</span>
+                            </button>
+                            <button class="tab-btn px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/20 text-on-surface-variant font-bold text-[11px] hover:bg-emerald-400/10 hover:text-emerald-400 hover:border-emerald-400/30 transition-all flex items-center gap-1" onclick="switchTableTab('present', this)">
+                                ✓ Present <span id="present-badge" class="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full text-[9px] font-mono">0</span>
                             </button>
                             <button class="tab-btn px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/20 text-on-surface-variant font-bold text-[11px] hover:bg-emerald-400/10 hover:text-emerald-400 hover:border-emerald-400/30 transition-all" onclick="switchTableTab('delivered', this)">
                                 ✓ Delivered
@@ -930,6 +979,12 @@
                             <button class="tab-btn px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/20 text-on-surface-variant font-bold text-[11px] hover:bg-error/10 hover:text-error hover:border-error/30 transition-all flex items-center gap-1" onclick="switchTableTab('issues', this)">
                                 ✗ Issues <span id="issues-badge" class="bg-error/20 text-error px-1.5 py-0.5 rounded-full text-[9px] font-mono">0</span>
                             </button>
+
+                            <!-- Hide Present Toggle (Leaves only Absent visible) -->
+                            <label class="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-on-surface-variant hover:text-on-surface select-none bg-surface-container px-3 py-2 rounded-lg border border-outline-variant/30 hover:border-primary/40 transition-all ml-1" title="When enabled, marking someone Present removes them from the table so only Absent members remain visible">
+                                <input type="checkbox" id="toggle-hide-present" onchange="toggleHidePresent(this.checked)" class="accent-primary rounded w-3.5 h-3.5 cursor-pointer">
+                                <span class="text-[11px]">Hide Present (Keep Absent Only)</span>
+                            </label>
                         </div>
                     </div>
 
@@ -941,8 +996,8 @@
                                     <th class="px-5 py-3 text-[10px] font-bold text-on-surface-variant uppercase">Recipient</th>
                                     <th class="px-5 py-3 text-[10px] font-bold text-on-surface-variant text-center uppercase">Template Pattern</th>
                                     <th class="px-5 py-3 text-[10px] font-bold text-on-surface-variant text-center uppercase">Dispatch Status</th>
-                                    <th class="px-5 py-3 text-[10px] font-bold text-on-surface-variant uppercase">Sheet Status</th>
-                                    <th class="px-5 py-3 text-[10px] font-bold text-on-surface-variant uppercase">Comment / Note</th>
+                                    <th class="px-5 py-3 text-[10px] font-bold text-on-surface-variant uppercase">Attendance & Sheet Status</th>
+                                    <th class="px-5 py-3 text-[10px] font-bold text-on-surface-variant uppercase">Comment / Group Link (Col D)</th>
                                     <th class="px-5 py-3 text-[10px] font-bold text-on-surface-variant text-right uppercase">Actions</th>
                                 </tr>
                             </thead>
@@ -954,6 +1009,331 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE VIEW: ABSENT & GROUP MENTION -->
+            <div id="view-attendance-mentions" class="page-view hidden space-y-6 max-w-7xl mx-auto">
+                <!-- Header Banner -->
+                <div class="bg-surface-container-low border border-outline-variant/30 p-6 rounded-3xl shadow-sm relative overflow-hidden flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-500/20 to-amber-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shadow-md">
+                            <span class="material-symbols-outlined text-[28px]">how_to_reg</span>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h3 class="font-extrabold text-xl text-on-surface">Absent Members & WhatsApp Group Mentions</h3>
+                                <span class="text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2.5 py-0.5 rounded-full">ATTENDANCE</span>
+                            </div>
+                            <p class="text-xs text-on-surface-variant mt-1">Default status is Absent. Mark someone Present to remove them from the list, then send WhatsApp group mentions with tag notifications for all remaining absent members.</p>
+                        </div>
+                    </div>
+
+                    <!-- Sync & Counter Badges -->
+                    <div class="flex items-center gap-3">
+                        <div class="bg-surface-container px-4 py-2 rounded-2xl border border-rose-500/30 text-center">
+                            <div class="text-[10px] font-bold text-rose-300 uppercase tracking-wider">Absent Now</div>
+                            <div class="text-2xl font-black text-rose-400 font-mono" id="absent-tab-count">0</div>
+                        </div>
+                        <div class="bg-surface-container px-4 py-2 rounded-2xl border border-emerald-500/30 text-center">
+                            <div class="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">Present</div>
+                            <div class="text-2xl font-black text-emerald-400 font-mono" id="present-tab-count">0</div>
+                        </div>
+                        <button onclick="refreshAbsentTabData()" class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-highest border border-outline-variant/30 text-xs font-semibold text-on-surface transition-all" title="Reload data from Google Sheet">
+                            <span class="material-symbols-outlined text-[16px]">refresh</span>
+                            <span>Refresh</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 1. WhatsApp Group Link Card -->
+                <div class="bg-surface-container-low border border-cyan-500/30 p-5 rounded-2xl shadow-sm space-y-2 bg-gradient-to-r from-cyan-950/20 via-surface-container-low to-surface-container-low">
+                    <div class="flex items-center justify-between">
+                        <label for="absent-tab-group-link" class="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[18px]">groups</span>
+                            <span>Target WhatsApp Group Link</span>
+                        </label>
+                        <span id="absent-group-link-status" class="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                            <span>Ready / Linked</span>
+                        </span>
+                    </div>
+                    <div class="relative flex items-center">
+                        <span class="material-symbols-outlined text-cyan-400 text-[18px] absolute left-3 pointer-events-none">link</span>
+                        <input type="text" id="absent-tab-group-link" placeholder="Paste WhatsApp Group Invite Link (e.g. https://chat.whatsapp.com/xxxxx or group JID)" class="w-full bg-surface-container border border-cyan-500/40 pl-10 pr-28 py-2.5 rounded-xl text-xs text-on-surface focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 outline-none transition-all font-mono placeholder:text-on-surface-variant/40" oninput="onAbsentTabGroupLinkChange(this.value)" />
+                        <button type="button" onclick="testOpenGroupLink()" class="absolute right-2 px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-[11px] font-bold transition-all">Open Group</button>
+                    </div>
+                    <p class="text-[11px] text-on-surface-variant">Auto-detected from Column D (Comments) in your Sheet, or you can paste any group link here directly.</p>
+                </div>
+
+                <!-- 2. Online Sheet — Group Schedule Card -->
+                <div class="bg-surface-container-low border border-violet-500/30 p-5 rounded-2xl shadow-sm space-y-4 bg-gradient-to-r from-violet-950/20 via-surface-container-low to-surface-container-low">
+                    <!-- Header -->
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="p-2 rounded-xl bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                                <span class="material-symbols-outlined text-[20px] block">table_view</span>
+                            </span>
+                            <div>
+                                <h3 class="text-xs font-bold text-violet-300 uppercase tracking-wider flex items-center gap-2">
+                                    <span>Google Sheet — Group Schedules</span>
+                                </h3>
+                                <p class="text-[11px] text-on-surface-variant">Paste your Google Sheet link to auto-load groups, schedules, and filter by day</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="online-sheet-today-badge" class="text-[11px] font-mono font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span>Today: <span id="online-sheet-today-label">Today</span></span>
+                            </span>
+                            <span id="online-sheet-count-badge" class="text-[11px] font-mono font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-3 py-1 rounded-full">
+                                0 Groups
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Google Sheet URL Input Row -->
+                    <div class="space-y-1.5">
+                        <label for="online-sheet-url-input" class="text-[10px] font-bold text-violet-300/80 uppercase tracking-wider flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-[14px]">link</span>
+                            <span>Google Sheet Link</span>
+                        </label>
+                        <div class="flex flex-col sm:flex-row items-stretch gap-2">
+                            <div class="relative flex-1 flex items-center">
+                                <span class="material-symbols-outlined text-violet-400 text-[18px] absolute left-3 pointer-events-none">grid_on</span>
+                                <input type="text" id="online-sheet-url-input"
+                                    value="https://docs.google.com/spreadsheets/d/1Vo0FNrZCBDFsjpqaP5Sao2zCEQ2BIaQhyWsboR9PuSs/edit?usp=sharing"
+                                    placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit"
+                                    class="w-full bg-surface-container border border-violet-500/40 pl-10 pr-3 py-2.5 rounded-xl text-xs text-on-surface focus:border-violet-400 focus:ring-1 focus:ring-violet-400/50 outline-none transition-all font-mono placeholder:text-on-surface-variant/40"
+                                    onchange="onOnlineSheetUrlChange()"
+                                    onkeydown="if(event.key==='Enter') fetchOnlineSheetGroups()" />
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" id="btn-fetch-online-sheet" onclick="fetchOnlineSheetGroups()"
+                                    class="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md">
+                                    <span class="material-symbols-outlined text-[16px]">sync</span>
+                                    <span>Load Groups</span>
+                                </button>
+                                <a id="online-sheet-open-link" href="https://docs.google.com/spreadsheets/d/1Vo0FNrZCBDFsjpqaP5Sao2zCEQ2BIaQhyWsboR9PuSs/edit" target="_blank"
+                                    class="p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface border border-outline-variant/30 transition-all flex items-center justify-center"
+                                    title="Open in Google Sheets">
+                                    <span class="material-symbols-outlined text-[18px]">open_in_new</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Target Banner (Shown when a group is selected) -->
+                    <div id="online-sheet-active-banner" class="hidden bg-violet-500/15 border border-violet-500/40 p-3 rounded-xl flex items-center justify-between gap-3 text-xs">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <span class="p-1.5 rounded-lg bg-violet-500/25 text-violet-200">
+                                <span class="material-symbols-outlined text-[18px] block">task_alt</span>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="text-[10px] text-violet-300 font-bold uppercase tracking-wider">Active Target WhatsApp Group</div>
+                                <div class="font-bold text-on-surface truncate" id="online-sheet-active-name">—</div>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-mono px-2 py-0.5 rounded-md bg-violet-500/20 text-violet-300 border border-violet-500/30 flex-shrink-0">
+                            Linked to Target
+                        </span>
+                    </div>
+
+                    <!-- Filter & Search Toolbar -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-outline-variant/20">
+                        <!-- Left: Filter Pills -->
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button type="button" id="btn-filter-today" onclick="filterOnlineSheet('today')"
+                                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all shadow-sm">
+                                <span class="material-symbols-outlined text-[15px]">today</span>
+                                <span>Today Only</span>
+                                <span id="online-sheet-today-count" class="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/30 font-mono">0</span>
+                            </button>
+                            <button type="button" id="btn-filter-all" onclick="filterOnlineSheet('all')"
+                                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-highest text-on-surface-variant border border-outline-variant/30 text-xs font-semibold transition-all">
+                                <span class="material-symbols-outlined text-[15px]">list</span>
+                                <span>All</span>
+                                <span id="online-sheet-all-count" class="text-[10px] px-1.5 py-0.2 rounded-full bg-surface-container-highest font-mono">0</span>
+                            </button>
+                            <!-- Day Selector -->
+                            <div class="relative">
+                                <select id="online-sheet-day-filter" onchange="filterOnlineSheetByDay(this.value)"
+                                    class="bg-surface-container border border-outline-variant/30 px-2.5 py-1.5 rounded-lg text-xs text-on-surface focus:border-violet-400 outline-none transition-all cursor-pointer">
+                                    <option value="">All Days</option>
+                                    <option value="السبت">السبت (Saturday)</option>
+                                    <option value="الأحد">الأحد (Sunday)</option>
+                                    <option value="الاثنين">الاثنين (Monday)</option>
+                                    <option value="الثلاثاء">الثلاثاء (Tuesday)</option>
+                                    <option value="الأربعاء">الأربعاء (Wednesday)</option>
+                                    <option value="الخميس">الخميس (Thursday)</option>
+                                    <option value="الجمعة">الجمعة (Friday)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Right: Live Search -->
+                        <div class="relative flex-1 sm:max-w-xs min-w-[160px]">
+                            <span class="material-symbols-outlined text-on-surface-variant/50 text-[16px] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">search</span>
+                            <input type="text" id="online-sheet-search" placeholder="Search group name..."
+                                oninput="onOnlineSheetSearch(this.value)"
+                                class="w-full bg-surface-container border border-outline-variant/30 pl-8 pr-3 py-1.5 rounded-lg text-xs text-on-surface focus:border-violet-400 outline-none transition-all placeholder:text-on-surface-variant/40" />
+                        </div>
+                    </div>
+
+                    <!-- Groups Grid / List -->
+                    <div id="online-sheet-list" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
+                        <div class="col-span-full flex items-center justify-center gap-2 py-8 text-xs text-on-surface-variant opacity-60">
+                            <span class="material-symbols-outlined text-[20px] animate-spin">progress_activity</span>
+                            Loading groups from Google Sheet...
+                        </div>
+                    </div>
+
+                    <!-- Footer Tip -->
+                    <div class="flex items-center justify-between text-[11px] text-on-surface-variant pt-2 border-t border-outline-variant/15">
+                        <span class="flex items-center gap-1 text-violet-300/80">
+                            <span class="material-symbols-outlined text-[14px]">touch_app</span>
+                            <span>Click any group to set as WhatsApp send target</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-on-surface-variant/60">
+                            Columns: A=Name, B=Link, C=Time, D=Day
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 2-Columns Grid: Left = Filtering & Absent List | Right = Mention Preview & Send -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    <!-- Left Column (7 cols): Input & Active Absent Members -->
+                    <div class="lg:col-span-7 space-y-5">
+                        <!-- Manual Names Filter Box -->
+                        <div class="bg-surface-container-low border border-outline-variant/30 p-5 rounded-2xl shadow-sm space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="font-bold text-sm text-on-surface flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-primary text-[18px]">edit_note</span>
+                                    <span>Filter Absent Names (Optional)</span>
+                                </h4>
+                                <span class="text-[10px] font-mono text-on-surface-variant">Auto-match with Sheet records</span>
+                            </div>
+                            <textarea id="manual-absent-names-textarea" rows="3" placeholder="Type or paste absent names (one per line, e.g. 5 or 7 names):&#10;Dr. Ahmed&#10;Tasnim&#10;Taha" class="w-full bg-surface-container border border-outline-variant/30 p-3 rounded-xl text-xs text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 outline-none resize-none leading-relaxed placeholder:text-on-surface-variant/40"></textarea>
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <button type="button" onclick="refreshAbsentTabData()" class="text-xs text-on-surface-variant hover:text-primary transition-colors">
+                                    Reset / Show All Sheet Contacts
+                                </button>
+                                <button type="button" onclick="matchAndFilterAbsentNames()" class="px-4 py-2 rounded-xl bg-primary text-on-primary font-bold text-xs flex items-center gap-1.5 hover:brightness-110 transition-all shadow-md">
+                                    <span class="material-symbols-outlined text-[16px]">person_search</span>
+                                    <span>Filter Absent List</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Active Absent List (Default is everyone Absent; clicking Present removes them) -->
+                        <div class="bg-surface-container-low border border-outline-variant/30 rounded-2xl shadow-sm overflow-hidden space-y-0">
+                            <!-- Card Header -->
+                            <div class="p-4 bg-surface-container/60 border-b border-outline-variant/20 flex flex-wrap items-center justify-between gap-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></span>
+                                    <h4 class="font-bold text-sm text-on-surface">Active Absent List (<span id="active-absent-list-count" class="text-rose-400 font-mono font-black">0</span>)</h4>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" onclick="markAllAbsentTab(true)" class="text-[11px] font-bold px-3 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all">Mark All Present</button>
+                                    <button type="button" onclick="markAllAbsentTab(false)" class="text-[11px] font-bold px-3 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-all">Reset to Absent</button>
+                                </div>
+                            </div>
+
+                            <!-- Explanatory Banner -->
+                            <div class="px-4 py-2 bg-rose-500/10 border-b border-rose-500/20 flex items-center gap-2 text-[11px] text-rose-300">
+                                <span class="material-symbols-outlined text-[15px]">info</span>
+                                <span>Click <strong>"✓ Present"</strong> on anyone who attended — they vanish immediately from this list. Only remaining absent people will be tagged.</span>
+                            </div>
+
+                            <!-- List Container -->
+                            <div id="absent-members-container" class="divide-y divide-outline-variant/10 max-h-[460px] overflow-y-auto">
+                                <div class="p-8 text-center text-xs text-on-surface-variant font-medium">
+                                    Loading contacts from sheet...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Collapsible Attending (Present) List -->
+                        <div class="bg-surface-container-low border border-outline-variant/20 rounded-2xl overflow-hidden">
+                            <button type="button" onclick="togglePresentAccordion()" class="w-full p-4 bg-surface-container/40 flex items-center justify-between text-left hover:bg-surface-container/60 transition-all">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-emerald-400 text-[18px]">check_circle</span>
+                                    <span class="font-bold text-xs text-on-surface">Present Attendees (Excluded from Absent Tagging): (<span id="accordion-present-count" class="text-emerald-400 font-mono font-bold">0</span>)</span>
+                                </div>
+                                <span id="accordion-present-chevron" class="material-symbols-outlined text-on-surface-variant text-[20px] transition-transform">expand_more</span>
+                            </button>
+                            <div id="present-members-container" class="hidden p-4 space-y-2 border-t border-outline-variant/15 max-h-60 overflow-y-auto bg-surface-container/10">
+                                <!-- Attending members populated here with Return button -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column (5 cols): WhatsApp Message Format & Send Panel -->
+                    <div class="lg:col-span-5 space-y-5 sticky top-20">
+                        <!-- Message Template Card -->
+                        <div class="bg-surface-container-low border border-primary/30 p-6 rounded-3xl shadow-xl space-y-4">
+                            <div class="flex items-center justify-between border-b border-outline-variant/20 pb-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary">
+                                        <span class="material-symbols-outlined text-[18px]">chat</span>
+                                    </div>
+                                    <h4 class="font-bold text-sm text-on-surface">WhatsApp Group Mention Preview</h4>
+                                </div>
+                                <span class="text-[10px] font-mono text-primary font-bold bg-primary/10 px-2 py-0.5 rounded">WHATSAPP FORMAT</span>
+                            </div>
+
+                            <!-- Mention Style Selector -->
+                            <div class="space-y-1.5">
+                                <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">Mention Tag Style:</span>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button type="button" id="btn-mention-style-tag" onclick="setMentionFormatStyle('tag')" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-primary text-on-primary shadow-sm" title="Guaranteed WhatsApp tag alert with name">
+                                        @Phone (Name)
+                                    </button>
+                                    <button type="button" id="btn-mention-style-name" onclick="setMentionFormatStyle('name')" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-surface-container text-on-surface hover:bg-surface-container-highest" title="Name first with mention">
+                                        Name (@Phone)
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Live Formatted Preview (1 - @Phone (Name)...) -->
+                            <div class="space-y-1">
+                                <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">Message Body:</span>
+                                <div class="bg-surface-container border border-outline-variant/40 p-4 rounded-2xl font-mono text-xs text-on-surface whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto select-all" id="absent-message-preview-box">
+1 - @201025485279 (Dr. Ahmed)
+2 - @201009202137 (Tasnim)
+
+فينكم يا شباب مستنيكم تدخلو عشان الغياب
+                                </div>
+                            </div>
+
+                            <!-- Editable Custom Footer Text -->
+                            <div class="space-y-1.5">
+                                <label for="absent-message-footer-input" class="text-[11px] font-bold text-on-surface flex items-center gap-1.5">
+                                    <span class="material-symbols-outlined text-primary text-[15px]">edit</span>
+                                    <span>Closing Note (Footer):</span>
+                                </label>
+                                <input type="text" id="absent-message-footer-input" value="فينكم يا شباب مستنيكم تدخلو عشان الغياب" oninput="updateAbsentTabMentionPreview()" class="w-full bg-surface-container border border-outline-variant/40 px-3 py-2 rounded-xl text-xs text-on-surface focus:border-primary outline-none transition-all placeholder:text-on-surface-variant/40" />
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="space-y-2 pt-2 border-t border-outline-variant/20">
+                                <button type="button" id="btn-send-absent-tab-group" onclick="sendAbsentTabMentionDirect()" class="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:brightness-110 text-on-primary font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer">
+                                    <span class="material-symbols-outlined text-[18px]">send</span>
+                                    <span>Send Group Mention Now</span>
+                                </button>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button type="button" onclick="openAbsentTabWhatsAppWeb()" class="py-2 px-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-bold text-xs flex items-center justify-center gap-1 transition-all">
+                                        <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+                                        <span>Open WhatsApp</span>
+                                    </button>
+                                    <button type="button" onclick="copyAbsentTabMessageText()" class="py-2 px-3 rounded-xl bg-surface-container hover:bg-surface-container-highest border border-outline-variant/30 text-on-surface font-bold text-xs flex items-center justify-center gap-1 transition-all">
+                                        <span class="material-symbols-outlined text-[16px]">content_copy</span>
+                                        <span>Copy Text</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1464,6 +1844,91 @@
         <div class="mt-3 pt-3 border-t border-outline-variant/20 flex items-center justify-between">
             <span class="text-[10px] text-on-surface-variant font-mono" id="live-last-action">Waiting...</span>
             <span class="text-[10px] text-on-surface-variant font-mono" id="live-speed">-- msg/min</span>
+        </div>
+    <!-- Absent Members Group Mention Modal -->
+    <div id="absent-mention-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-md px-4">
+        <div class="bg-surface-container-low w-full max-w-2xl rounded-3xl shadow-2xl border border-outline-variant/40 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                        <span class="material-symbols-outlined text-[24px]">campaign</span>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base text-on-surface">WhatsApp Group Mention Notice</h3>
+                        <p class="text-xs text-on-surface-variant">Send a group attendance report with mentions to all absent members</p>
+                    </div>
+                </div>
+                <button class="material-symbols-outlined text-on-surface-variant hover:text-error transition-colors p-1 rounded-lg" onclick="closeAbsentMentionModal()">close</button>
+            </div>
+
+            <div class="p-6 space-y-5 overflow-y-auto flex-1">
+                <!-- Target Group Link / JID -->
+                <div class="bg-surface-container/70 border border-outline-variant/30 p-4 rounded-2xl space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label for="mention-group-target" class="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-2">
+                            <span class="material-symbols-outlined text-cyan-400 text-[18px]">groups</span>
+                            <span>Target WhatsApp Group Link (from Col D or pasted)</span>
+                        </label>
+                        <span class="text-[10px] font-mono text-cyan-300 font-bold bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded">COL D LINK</span>
+                    </div>
+                    <input type="text" id="mention-group-target" placeholder="https://chat.whatsapp.com/xxxxx or group JID" class="w-full bg-surface-container border border-outline-variant/40 p-3 rounded-xl font-mono text-xs text-on-surface focus:border-primary outline-none transition-all placeholder:text-on-surface-variant/40"/>
+                    <p class="text-[11px] text-on-surface-variant">Auto-loaded from Column D in your Google Sheet, or you can paste any WhatsApp group invite link here.</p>
+                </div>
+
+                <!-- Absent Members List Preview -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-rose-400 text-[16px]">person_off</span>
+                            <span>Absent Members to Tag (<span id="modal-absent-count" class="text-rose-400">0</span>):</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-on-surface-variant">Auto-detected from "Absent" status</span>
+                    </div>
+                    <div id="modal-absent-pills" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-surface-container/40 rounded-xl border border-outline-variant/20">
+                        <span class="text-xs text-on-surface-variant">No absent members marked yet.</span>
+                    </div>
+                </div>
+
+                <!-- Message Composition -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-primary text-[16px]">edit_note</span>
+                            <span>WhatsApp Mention Message:</span>
+                        </label>
+                        <div class="flex items-center gap-1.5">
+                            <button type="button" onclick="regenerateMentionMessage('ar')" class="text-[10px] font-bold px-2 py-0.5 rounded bg-surface-container hover:bg-primary/20 text-on-surface border border-outline-variant/30 transition-all">عربي</button>
+                            <button type="button" onclick="regenerateMentionMessage('en')" class="text-[10px] font-bold px-2 py-0.5 rounded bg-surface-container hover:bg-primary/20 text-on-surface border border-outline-variant/30 transition-all">English</button>
+                        </div>
+                    </div>
+                    <textarea id="modal-mention-textarea" rows="7" class="w-full bg-surface-container border border-outline-variant/40 rounded-xl p-3 text-xs text-on-surface focus:ring-1 focus:ring-primary outline-none resize-none font-mono leading-relaxed" placeholder="Mention message..."></textarea>
+                    <p class="text-[10px] text-on-surface-variant flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[13px] text-primary">info</span>
+                        <span>Names with <code>@Name</code> will trigger WhatsApp mentions for group members.</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Footer Action Buttons -->
+            <div class="p-5 bg-surface-container flex flex-wrap justify-between items-center gap-3 border-t border-outline-variant/20">
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="copyAbsentMentionMessage()" class="px-3.5 py-2 rounded-xl bg-surface-container-highest hover:bg-primary/20 hover:text-primary text-on-surface-variant transition-all font-semibold text-xs flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[16px]">content_copy</span>
+                        <span>Copy Text</span>
+                    </button>
+                    <button type="button" onclick="openAbsentMentionInWhatsApp()" class="px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 transition-all font-semibold text-xs flex items-center gap-1.5" title="Open WhatsApp group invite link in browser">
+                        <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+                        <span>Open WhatsApp Group</span>
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" class="px-4 py-2 rounded-xl text-on-surface-variant hover:bg-surface-container-highest transition-colors font-bold text-xs" onclick="closeAbsentMentionModal()">Cancel</button>
+                    <button type="button" id="btn-send-group-mention" onclick="sendAbsentMentionViaWebClient()" class="px-5 py-2 rounded-xl bg-gradient-to-r from-primary to-emerald-400 text-on-primary font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-primary/20 hover:brightness-110 transition-all">
+                        <span class="material-symbols-outlined text-[16px]">send</span>
+                        <span>Send to Group Now</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 

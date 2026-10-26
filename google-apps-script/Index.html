@@ -84,6 +84,106 @@
     .badge.skipped { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
     .badge.sent { background: rgba(16, 185, 129, 0.2); color: var(--accent); }
     .badge.failed { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+    .btn-contacts {
+      background: linear-gradient(135deg, #4285F4, #34A853);
+      color: #fff;
+      font-weight: 800;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 10px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      letter-spacing: 0.3px;
+      transition: opacity 0.2s;
+    }
+    .btn-contacts:disabled { opacity: 0.5; cursor: not-allowed; }
+    .contacts-result {
+      margin-top: 10px;
+      font-size: 0.78rem;
+      line-height: 1.6;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .contacts-result .row { padding: 3px 0; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; }
+    .stat-bar { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .stat { background: #0b1120; border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; font-weight: 700; }
+    .stat.green { color: #34A853; } .stat.yellow { color: var(--warning); } .stat.red { color: var(--danger); }
+
+    /* ── Attendance ── */
+    .att-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #1e293b;
+      gap: 6px;
+      font-size: 0.8rem;
+    }
+    .att-row.present-row { opacity: 0.4; text-decoration: line-through; }
+    .att-info { flex: 1; min-width: 0; }
+    .att-info strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .att-info span { color: #64748b; font-size: 0.72rem; }
+    .att-btns { display: flex; gap: 4px; flex-shrink: 0; }
+    .btn-att {
+      padding: 3px 9px;
+      border-radius: 5px;
+      border: none;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.1s;
+    }
+    .btn-att:active { transform: scale(0.93); }
+    .btn-present { background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid #10b981; }
+    .btn-present.active { background: #10b981; color: #000; }
+    .btn-absent  { background: rgba(239,68,68,0.15);  color: #ef4444; border: 1px solid #ef4444; }
+    .btn-absent.active  { background: #ef4444;  color: #fff; }
+    .att-badge { font-size: 0.65rem; padding: 1px 5px; border-radius: 3px; font-weight: 700; }
+    .att-badge.p { background: rgba(16,185,129,0.2); color: #10b981; }
+    .att-badge.a { background: rgba(239,68,68,0.2);  color: #ef4444; }
+    .group-msg-box {
+      background: #0b1120;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      max-height: 140px;
+      overflow-y: auto;
+      margin-top: 6px;
+      font-family: monospace;
+    }
+    .btn-green {
+      background: linear-gradient(135deg, #25D366, #128C7E);
+      color: #fff;
+      font-weight: 800;
+      border: none;
+      padding: 9px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      font-family: inherit;
+      font-size: 0.85rem;
+      margin-top: 6px;
+    }
+    .btn-secondary {
+      background: #1e293b;
+      color: #94a3b8;
+      font-weight: 700;
+      border: 1px solid #334155;
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      font-family: inherit;
+      font-size: 0.78rem;
+      margin-top: 5px;
+    }
   </style>
 </head>
 <body>
@@ -127,9 +227,92 @@
     </div>
   </div>
 
+  <!-- Google Contacts Section -->
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+      <img src="https://www.gstatic.com/images/branding/product/1x/contacts_2022_48dp.png" width="22" height="22" style="border-radius:4px;">
+      <label style="margin:0; color:#4285F4; font-size:0.85rem;">Save to Google Contacts</label>
+    </div>
+    <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:8px;">
+      يحفظ الأرقام الموجودة في النطاق المختار (بدون مكررات) في Google Contacts تحت Label اسمه <strong style="color:#34A853;">Sheet Contacts</strong>.
+    </div>
+
+    <div style="margin-bottom:8px;">
+      <label>Contact Group Name (Label)</label>
+      <input type="text" id="contacts-label" value="Sheet Contacts" placeholder="Sheet Contacts">
+    </div>
+
+    <button class="btn-contacts" id="btn-save-contacts" onclick="saveContacts()">
+      📒 Save Range to Google Contacts
+    </button>
+    <button class="btn-contacts" id="btn-save-all" onclick="saveAllContacts()" style="background: linear-gradient(135deg, #34A853, #0F9D58); margin-top:6px;">
+      📒 Save ALL Sheet to Google Contacts
+    </button>
+
+    <div id="contacts-status" style="margin-top:8px; font-size:0.78rem; color:#94a3b8;"></div>
+    <div class="contacts-result" id="contacts-result"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       ATTENDANCE & GROUP SYNC
+  ══════════════════════════════════════════ -->
+  <div class="card" id="att-section">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <div style="display:flex; align-items:center; gap:7px;">
+        <span style="font-size:1.2rem;">📋</span>
+        <label style="margin:0; color:#f8fafc; font-size:0.9rem; font-weight:800;">Attendance &amp; Group Sync</label>
+      </div>
+      <button class="btn-secondary" style="width:auto; padding:4px 10px; margin:0;" onclick="loadAttendance()">🔄 Reload</button>
+    </div>
+
+    <!-- Group link + label -->
+    <div class="grid-2" style="margin-bottom:8px;">
+      <div>
+        <label>Group Link (from Col D)</label>
+        <input type="text" id="att-group-link" placeholder="Auto-detected from sheet…" readonly style="font-size:0.7rem; color:#4285F4;">
+      </div>
+      <div>
+        <label>Group / Session Label</label>
+        <input type="text" id="att-group-label" value="Sheet Contacts" placeholder="e.g. Sales Team">
+      </div>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="stat-bar" id="att-stats" style="margin-bottom:8px;"></div>
+
+    <!-- Contact list with Present/Absent buttons -->
+    <div id="att-list" style="max-height:220px; overflow-y:auto; margin-bottom:10px;">
+      <div style="color:#64748b; font-size:0.78rem;">Click Reload to load contacts…</div>
+    </div>
+
+    <!-- Save attendance to sheet -->
+    <button class="btn-secondary" onclick="saveAttendanceToSheet()">💾 Save Attendance to Sheet (Col C)</button>
+
+    <!-- Absent section -->
+    <div id="att-absent-section" style="display:none; margin-top:10px; border-top:1px solid #334155; padding-top:10px;">
+      <label style="color:#ef4444;">❌ Absent Members — <span id="att-absent-count">0</span></label>
+      <div id="att-absent-list" style="font-size:0.78rem; color:#cbd5e1; max-height:90px; overflow-y:auto; margin-bottom:8px;"></div>
+
+      <label>Absence Reason</label>
+      <input type="text" id="att-reason" placeholder="e.g. Did not confirm attendance" value="Did not confirm their attendance">
+
+      <label style="margin-top:8px;">Group Mention Message Preview</label>
+      <div class="group-msg-box" id="att-msg-preview">—</div>
+
+      <button class="btn-green" onclick="openGroupMessage()">💬 Open WhatsApp Group &amp; Send</button>
+      <button class="btn-secondary" onclick="saveAbsentContacts()" id="btn-save-absent">📒 Save Absent to Google Contacts</button>
+      <div id="att-save-result" style="font-size:0.72rem; margin-top:6px;"></div>
+    </div>
+  </div>
+
   <script>
     let currentContacts = [];
+    // Attendance state: map of rowIndex → 'Present' | 'Absent' | null
+    let attendanceMap = {};
+    let attendanceContacts = [];
+    let groupLink = '';
 
+    // ── Original batch queue ──────────────────────────────────
     function loadRecords() {
       const fromRow = parseInt(document.getElementById('from-row').value) || 1;
       const toRow = parseInt(document.getElementById('to-row').value) || 15;
@@ -147,7 +330,7 @@
           if (c.status.startsWith('Skipped')) badgeClass = 'skipped';
           else if (c.status.startsWith('Sent')) badgeClass = 'sent';
 
-          html += `<div style="padding:4px 0; border-bottom:1px solid #334155; display:flex; justify-size:space-between;">
+          html += `<div style="padding:4px 0; border-bottom:1px solid #334155; display:flex; justify-content:space-between;">
             <span>#${c.rowIndex} <strong>${c.name}</strong> (${c.phone})</span>
             <span class="badge ${badgeClass}">${c.status}</span>
           </div>`;
@@ -161,7 +344,238 @@
       alert('System Taha: To send WhatsApp messages automatically with live status, open the dashboard at http://localhost:3000');
     }
 
+    // ── Google Contacts save ──────────────────────────────────
+    function saveContacts() {
+      const fromRow = parseInt(document.getElementById('from-row').value) || 1;
+      const toRow = parseInt(document.getElementById('to-row').value) || 15;
+      const label = document.getElementById('contacts-label').value.trim() || 'Sheet Contacts';
+      runSaveContacts(fromRow, toRow, label);
+    }
+
+    function saveAllContacts() {
+      const label = document.getElementById('contacts-label').value.trim() || 'Sheet Contacts';
+      setContactsLoading(true);
+      document.getElementById('contacts-status').textContent = '⏳ Saving all contacts... please wait.';
+      google.script.run
+        .withSuccessHandler(showContactsResult)
+        .withFailureHandler(err => {
+          document.getElementById('contacts-status').innerHTML = `<span style="color:#ef4444;">❌ Error: ${err.message}</span>`;
+          setContactsLoading(false);
+        })
+        .saveAllContactsToGoogle();
+    }
+
+    function runSaveContacts(from, to, label) {
+      setContactsLoading(true);
+      document.getElementById('contacts-status').textContent = `⏳ Saving rows ${from}–${to}... please wait.`;
+      document.getElementById('contacts-result').innerHTML = '';
+      google.script.run
+        .withSuccessHandler(showContactsResult)
+        .withFailureHandler(err => {
+          document.getElementById('contacts-status').innerHTML = `<span style="color:#ef4444;">❌ Error: ${err.message}</span>`;
+          setContactsLoading(false);
+        })
+        .saveToGoogleContacts(from, to, label);
+    }
+
+    function showContactsResult(res) {
+      setContactsLoading(false);
+      if (!res.success) {
+        document.getElementById('contacts-status').innerHTML = `<span style="color:#ef4444;">${res.message}</span>`;
+        return;
+      }
+      document.getElementById('contacts-status').innerHTML = `
+        <div class="stat-bar">
+          <span class="stat green">✅ Saved: ${res.saved}</span>
+          <span class="stat yellow">⚠️ Skipped: ${res.skipped}</span>
+          <span class="stat red">❌ Failed: ${res.failed}</span>
+          <span class="stat">Total: ${res.total}</span>
+        </div>
+        <div style="color:#34A853; font-size:0.7rem;">📁 Label: ${res.label}</div>
+      `;
+      let html = '';
+      (res.details || []).forEach(d => {
+        const color = d.status.includes('✅') ? '#34A853' : d.status.includes('Already') ? '#f59e0b' : '#ef4444';
+        html += `<div class="row"><span>${d.name} (${d.phone})</span><span style="color:${color};">${d.status}</span></div>`;
+      });
+      document.getElementById('contacts-result').innerHTML = html;
+    }
+
+    function setContactsLoading(loading) {
+      document.getElementById('btn-save-contacts').disabled = loading;
+      document.getElementById('btn-save-all').disabled = loading;
+    }
+
+    // ── ATTENDANCE & GROUP SYNC ───────────────────────────────
+    function loadAttendance() {
+      const fromRow = parseInt(document.getElementById('from-row').value) || 1;
+      const toRow   = parseInt(document.getElementById('to-row').value)   || 15;
+      document.getElementById('att-list').innerHTML = '<div style="color:#64748b;font-size:0.78rem;">⏳ Loading…</div>';
+      google.script.run
+        .withSuccessHandler(renderAttendance)
+        .withFailureHandler(err => {
+          document.getElementById('att-list').innerHTML = `<span style="color:#ef4444;">❌ ${err.message}</span>`;
+        })
+        .getAttendanceData(fromRow, toRow);
+    }
+
+    function renderAttendance(res) {
+      if (!res.success) {
+        document.getElementById('att-list').innerHTML = `<span style="color:#ef4444;">${res.message}</span>`;
+        return;
+      }
+      attendanceContacts = res.contacts;
+      groupLink = res.groupLink || '';
+      document.getElementById('att-group-link').value = groupLink;
+
+      // Reset map preserving existing marks
+      attendanceContacts.forEach(c => {
+        if (!attendanceMap[c.rowIndex]) attendanceMap[c.rowIndex] = null;
+        // Pre-mark from sheet status
+        if (c.status.toLowerCase().includes('present') && !attendanceMap[c.rowIndex])
+          attendanceMap[c.rowIndex] = 'Present';
+        else if (c.status.toLowerCase().includes('absent') && !attendanceMap[c.rowIndex])
+          attendanceMap[c.rowIndex] = 'Absent';
+      });
+
+      rebuildAttendanceUI();
+    }
+
+    function rebuildAttendanceUI() {
+      let html = '';
+      attendanceContacts.forEach(c => {
+        const mark = attendanceMap[c.rowIndex];
+        const isPresent = mark === 'Present';
+        const isAbsent  = mark === 'Absent';
+        const rowCls    = isPresent ? 'att-row present-row' : 'att-row';
+        const badge     = mark
+          ? `<span class="att-badge ${isPresent ? 'p' : 'a'}">${isPresent ? 'Present ✅' : 'Absent ❌'}</span>`
+          : '';
+
+        html += `<div class="${rowCls}" id="attrow-${c.rowIndex}">
+          <div class="att-info">
+            <strong>${c.name}</strong>
+            <span>${c.phone || '—'}</span>
+          </div>
+          ${badge}
+          <div class="att-btns">
+            <button class="btn-att btn-present ${isPresent ? 'active' : ''}" onclick="markAttendance(${c.rowIndex},'Present')">✅ Present</button>
+            <button class="btn-att btn-absent  ${isAbsent  ? 'active' : ''}" onclick="markAttendance(${c.rowIndex},'Absent')">❌ Absent</button>
+          </div>
+        </div>`;
+      });
+
+      document.getElementById('att-list').innerHTML = html || '<div style="color:#64748b;font-size:0.78rem;">No contacts loaded.</div>';
+      updateAttStats();
+    }
+
+    function markAttendance(rowIndex, status) {
+      attendanceMap[rowIndex] = status;
+      rebuildAttendanceUI();
+    }
+
+    function updateAttStats() {
+      const total   = attendanceContacts.length;
+      const present = Object.values(attendanceMap).filter(v => v === 'Present').length;
+      const absent  = Object.values(attendanceMap).filter(v => v === 'Absent').length;
+      const pending = total - present - absent;
+
+      document.getElementById('att-stats').innerHTML = `
+        <span class="stat green">✅ Present: ${present}</span>
+        <span class="stat red">❌ Absent: ${absent}</span>
+        <span class="stat">⏳ Pending: ${pending}</span>
+        <span class="stat">👥 Total: ${total}</span>
+      `;
+
+      // Build absent section
+      const absentContacts = attendanceContacts.filter(c => attendanceMap[c.rowIndex] === 'Absent');
+      if (absentContacts.length > 0) {
+        document.getElementById('att-absent-section').style.display = 'block';
+        document.getElementById('att-absent-count').textContent = absentContacts.length;
+        document.getElementById('att-absent-list').innerHTML =
+          absentContacts.map(c => `<div>• <strong>${c.name}</strong> <span style="color:#64748b;">(${c.phone})</span></div>`).join('');
+        updateGroupMsgPreview(absentContacts);
+      } else {
+        document.getElementById('att-absent-section').style.display = 'none';
+      }
+    }
+
+    function updateGroupMsgPreview(absentContacts) {
+      const label  = document.getElementById('att-group-label').value.trim() || 'the session';
+      const reason = document.getElementById('att-reason').value.trim() || 'Did not confirm their attendance';
+      const names  = absentContacts.map(c => c.name);
+      google.script.run
+        .withSuccessHandler(res => {
+          document.getElementById('att-msg-preview').textContent = res.success ? res.message : '—';
+        })
+        .buildGroupMentionMessage(names, label, reason);
+    }
+
+    // Save attendance status to Col C in sheet
+    function saveAttendanceToSheet() {
+      const updates = [];
+      attendanceContacts.forEach(c => {
+        if (attendanceMap[c.rowIndex]) {
+          updates.push({ rowIndex: c.rowIndex, status: attendanceMap[c.rowIndex] });
+        }
+      });
+      if (updates.length === 0) { alert('No attendance marked yet.'); return; }
+      google.script.run
+        .withSuccessHandler(() => alert(`✅ Saved ${updates.length} attendance records to sheet.`))
+        .batchSetAttendance(updates);
+    }
+
+    // Open WhatsApp group link with the composed message
+    function openGroupMessage() {
+      const link = document.getElementById('att-group-link').value.trim();
+      const msg  = document.getElementById('att-msg-preview').textContent;
+      if (!link) { alert('No group link found. Add the WhatsApp group link in Col D of the sheet.'); return; }
+      if (!msg || msg === '—') { alert('No message composed yet.'); return; }
+      // If link is wa.me group invite: open it
+      // We also copy message to clipboard for pasting
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(msg).then(() => {
+          window.open(link, '_blank');
+          alert('✅ Message copied to clipboard!\nPaste it in the WhatsApp group.');
+        }).catch(() => {
+          window.open(link, '_blank');
+        });
+      } else {
+        window.open(link, '_blank');
+      }
+    }
+
+    // Save absent contacts to Google Contacts with name format: Name (GroupLabel)
+    function saveAbsentContacts() {
+      const absentContacts = attendanceContacts.filter(c => attendanceMap[c.rowIndex] === 'Absent');
+      if (absentContacts.length === 0) { alert('No absent members to save.'); return; }
+      const label = document.getElementById('att-group-label').value.trim() || 'Sheet Contacts';
+      document.getElementById('btn-save-absent').disabled = true;
+      document.getElementById('att-save-result').textContent = '⏳ Saving to Google Contacts…';
+      google.script.run
+        .withSuccessHandler(res => {
+          document.getElementById('btn-save-absent').disabled = false;
+          document.getElementById('att-save-result').innerHTML = res.success
+            ? `<span style="color:#34A853;">✅ Saved: ${res.saved} &nbsp;|&nbsp; Skipped: ${res.skipped} &nbsp;|&nbsp; Failed: ${res.failed}</span>`
+            : `<span style="color:#ef4444;">${res.message}</span>`;
+        })
+        .withFailureHandler(err => {
+          document.getElementById('btn-save-absent').disabled = false;
+          document.getElementById('att-save-result').innerHTML = `<span style="color:#ef4444;">❌ ${err.message}</span>`;
+        })
+        .saveAbsentToGoogleContacts(absentContacts, label);
+    }
+
+    // Live update message preview when reason changes
+    document.addEventListener('input', function(e) {
+      if (e.target.id === 'att-reason' || e.target.id === 'att-group-label') {
+        const absentContacts = attendanceContacts.filter(c => attendanceMap[c.rowIndex] === 'Absent');
+        if (absentContacts.length > 0) updateGroupMsgPreview(absentContacts);
+      }
+    });
+
     loadRecords();
+    loadAttendance();
   </script>
 </body>
 </html>

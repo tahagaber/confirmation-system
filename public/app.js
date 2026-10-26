@@ -511,6 +511,11 @@ function switchMainTab(tabId, btnElem) {
             mirror.innerHTML = originalTable.outerHTML;
         }
     }
+
+    if (tabId === 'attendance-mentions') {
+        initAbsentTab();
+        if (typeof renderOnlineSheetList === 'function') renderOnlineSheetList();
+    }
 }
 
 // Time Filter Change Handler (Current Batch / 30 Days / Quarterly / Custom)
@@ -947,6 +952,9 @@ async function fetchGoogleSheetRecords() {
             comment: r.comment || ''
         }));
 
+        detectGroupLinkFromRecords(allLoadedRecords);
+        updateAttendanceUIStats();
+
         rangeFromInput.value = 1;
         rangeToInput.value = 100;
         applyRangeFilter();
@@ -1040,15 +1048,24 @@ async function logoutWhatsappSession() {
 // ==========================================
 // 4. Table Rendering, Search & Tab Filtering
 // ==========================================
+let isHidePresentOnly = false;
+
+function toggleHidePresent(checked) {
+    isHidePresentOnly = Boolean(checked);
+    renderRecipientTable();
+    updateKPIStats();
+}
+window.toggleHidePresent = toggleHidePresent;
+
 function switchTableTab(tabName, btnElem) {
     activeTableTab = tabName;
     document.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.remove('border-primary', 'text-primary', 'active');
-        b.classList.add('border-transparent', 'text-on-surface-variant');
+        b.classList.remove('border-primary', 'text-primary', 'bg-primary/10', 'active');
+        b.classList.add('border-outline-variant/20', 'text-on-surface-variant');
     });
     if (btnElem) {
-        btnElem.classList.add('border-primary', 'text-primary', 'active');
-        btnElem.classList.remove('border-transparent', 'text-on-surface-variant');
+        btnElem.classList.add('border-primary', 'text-primary', 'bg-primary/10', 'active');
+        btnElem.classList.remove('border-outline-variant/20', 'text-on-surface-variant');
     }
     renderRecipientTable();
 }
@@ -1064,8 +1081,17 @@ if (searchInput) {
 function getFilteredDataset() {
     if (!slicedBatchRecords) return [];
     return slicedBatchRecords.filter(rec => {
+        // Attendance Hide Present Mode: If user checked "Hide Present", hide anyone who is Attending/Present so only Absent remain
+        if (isHidePresentOnly && (rec.sheetStatus === 'Attending' || rec.sheetStatus === 'Present')) {
+            return false;
+        }
+
         // Tab filter
-        if (activeTableTab === 'issues') {
+        if (activeTableTab === 'absent') {
+            if (rec.sheetStatus !== 'Absent') return false;
+        } else if (activeTableTab === 'present') {
+            if (rec.sheetStatus !== 'Attending' && rec.sheetStatus !== 'Present') return false;
+        } else if (activeTableTab === 'issues') {
             const isIssue = rec.status.includes('Failed') || rec.status.includes('Invalid') || rec.status.includes('Skipped') || rec.status.includes('No WhatsApp') || rec.sheetStatus === 'Issue';
             if (!isIssue) return false;
         } else if (activeTableTab === 'delivered') {
@@ -1163,10 +1189,13 @@ function renderRecipientTable() {
         const phoneIconColor = isGroupItem ? 'text-cyan-400 opacity-90' : 'opacity-60';
 
         let selectColor = 'bg-surface-container/70 border-outline-variant/30 text-on-surface';
-        if (item.sheetStatus === 'Attending') selectColor = 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 font-bold';
+        if (item.sheetStatus === 'Attending' || item.sheetStatus === 'Present') selectColor = 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 font-bold';
+        else if (item.sheetStatus === 'Absent') selectColor = 'bg-rose-500/20 border-rose-500/50 text-rose-300 font-bold';
         else if (item.sheetStatus === 'No Response') selectColor = 'bg-amber-500/10 border-amber-500/40 text-amber-400 font-bold';
         else if (item.sheetStatus === 'Excused') selectColor = 'bg-indigo-500/10 border-indigo-500/40 text-indigo-300 font-bold';
         else if (item.sheetStatus === 'Issue') selectColor = 'bg-rose-500/20 border-rose-500/50 text-rose-400 font-extrabold animate-pulse';
+
+        const isCommentGroupLink = Boolean(item.comment && (item.comment.includes('chat.whatsapp.com') || item.comment.endsWith('@g.us')));
 
         // Message Pattern Badge for Cyclic Rotation
         let patternBadge = '';
@@ -1217,17 +1246,45 @@ function renderRecipientTable() {
                     </span>
                 </td>
                 <td class="px-5 py-4">
-                    <select onchange="updateRowSheetStatus(${item.sheetRowIndex}, this.value)" class="${selectColor} text-xs py-1.5 px-3 rounded-xl border outline-none cursor-pointer transition-all hover:brightness-110">
-                        <option value="Attending" ${item.sheetStatus === 'Attending' ? 'selected' : ''}>✓ Attending</option>
-                        <option value="No Response" ${item.sheetStatus === 'No Response' ? 'selected' : ''}>⏳ No Response</option>
-                        <option value="Excused" ${item.sheetStatus === 'Excused' ? 'selected' : ''}>✉ Excused</option>
-                        <option value="Issue" ${item.sheetStatus === 'Issue' ? 'selected' : ''}>⚠ Issue / Invalid</option>
-                    </select>
+                    <div class="flex flex-col gap-1.5 min-w-[170px]">
+                        <!-- Quick Attendance Buttons: Present vs Absent -->
+                        <div class="flex items-center gap-1.5">
+                            <button type="button" onclick="markAttendance(${item.sheetRowIndex}, 'Present')" 
+                                class="flex-1 flex items-center justify-center gap-1 py-1 px-2 rounded-lg text-[11px] font-bold transition-all ${(item.sheetStatus === 'Attending' || item.sheetStatus === 'Present') ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20'}" 
+                                title="Mark as Present (Attending)">
+                                <span class="material-symbols-outlined text-[13px]">check_circle</span>
+                                <span>Present</span>
+                            </button>
+                            <button type="button" onclick="markAttendance(${item.sheetRowIndex}, 'Absent')" 
+                                class="flex-1 flex items-center justify-center gap-1 py-1 px-2 rounded-lg text-[11px] font-bold transition-all ${item.sheetStatus === 'Absent' ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/30' : 'bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20'}" 
+                                title="Mark as Absent">
+                                <span class="material-symbols-outlined text-[13px]">cancel</span>
+                                <span>Absent</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Dropdown Status selector for additional states -->
+                        <select onchange="updateRowSheetStatus(${item.sheetRowIndex}, this.value)" class="${selectColor} text-[11px] py-1 px-2 rounded-lg border outline-none cursor-pointer transition-all hover:brightness-110">
+                            <option value="Attending" ${(item.sheetStatus === 'Attending' || item.sheetStatus === 'Present') ? 'selected' : ''}>✓ Attending</option>
+                            <option value="Absent" ${item.sheetStatus === 'Absent' ? 'selected' : ''}>❌ Absent</option>
+                            <option value="No Response" ${item.sheetStatus === 'No Response' ? 'selected' : ''}>⏳ No Response</option>
+                            <option value="Excused" ${item.sheetStatus === 'Excused' ? 'selected' : ''}>✉ Excused</option>
+                            <option value="Issue" ${item.sheetStatus === 'Issue' ? 'selected' : ''}>⚠ Issue / Invalid</option>
+                        </select>
+                    </div>
                 </td>
                 <td class="px-5 py-4">
-                    <div class="relative flex items-center min-w-[200px]">
-                        <span class="material-symbols-outlined absolute left-2.5 text-on-surface-variant/60 text-[16px] pointer-events-none">edit_note</span>
-                        <input type="text" value="${item.comment || ''}" placeholder="Add note/comment..." onchange="updateRowComment(${item.sheetRowIndex}, this.value)" class="w-full bg-surface-container/60 border border-outline-variant/30 pl-8 pr-3 py-1.5 rounded-xl text-xs text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 focus:bg-surface-container-highest/60 outline-none transition-all">
+                    <div class="flex flex-col gap-1 min-w-[210px]">
+                        <div class="relative flex items-center">
+                            <span class="material-symbols-outlined absolute left-2.5 text-on-surface-variant/60 text-[16px] pointer-events-none">${isCommentGroupLink ? 'groups' : 'edit_note'}</span>
+                            <input type="text" value="${item.comment || ''}" placeholder="Add note or WhatsApp Group Link..." onchange="updateRowComment(${item.sheetRowIndex}, this.value)" class="w-full bg-surface-container/60 border ${isCommentGroupLink ? 'border-cyan-500/40 text-cyan-300' : 'border-outline-variant/30 text-on-surface'} pl-8 pr-3 py-1.5 rounded-xl text-xs focus:border-primary focus:ring-1 focus:ring-primary/40 focus:bg-surface-container-highest/60 outline-none transition-all">
+                        </div>
+                        ${isCommentGroupLink ? `
+                            <div class="flex items-center gap-1 text-[10px] text-cyan-400 font-mono">
+                                <span class="material-symbols-outlined text-[12px]">link</span>
+                                <span class="truncate">WhatsApp Group Link Active</span>
+                            </div>
+                        ` : ''}
                     </div>
                 </td>
                 <td class="px-5 py-4 text-right">
@@ -1247,17 +1304,55 @@ function renderRecipientTable() {
     if (mirror && originalTable && !document.getElementById('view-contacts').classList.contains('hidden')) {
         mirror.innerHTML = originalTable.outerHTML;
     }
+
+    updateAttendanceUIStats();
 }
+
+// Quick Attendance Marker: Present (Attending) vs Absent
+function markAttendance(sheetRowIndex, status) {
+    const target = slicedBatchRecords.find(r => r.sheetRowIndex === sheetRowIndex);
+    if (!target) return;
+
+    const newStatus = (status === 'Present' || status === 'Attending') ? 'Attending' : 'Absent';
+    target.sheetStatus = newStatus;
+
+    if (allLoadedRecords) {
+        const mainTarget = allLoadedRecords.find(r => r.sheetRowIndex === sheetRowIndex);
+        if (mainTarget) mainTarget.sheetStatus = newStatus;
+    }
+
+    // Sync status to Google Sheet (Col C in English)
+    syncRowToSheet(sheetRowIndex);
+
+    updateAttendanceUIStats();
+    updateKPIStats();
+    updateChartsRealtime();
+
+    if (isHidePresentOnly && newStatus === 'Attending') {
+        showToast(`Row #${sheetRowIndex} marked Present & removed from view (Attending)`, 'info');
+    } else {
+        showToast(`Row #${sheetRowIndex} marked as: ${newStatus}`, newStatus === 'Absent' ? 'error' : 'success');
+    }
+
+    renderRecipientTable();
+}
+window.markAttendance = markAttendance;
 
 // Handle Sheet Status update & Syncing to Google Sheet
 function updateRowSheetStatus(sheetRowIndex, newStatus) {
     const target = slicedBatchRecords.find(r => r.sheetRowIndex === sheetRowIndex);
     if (target) {
         target.sheetStatus = newStatus;
+        if (allLoadedRecords) {
+            const mainTarget = allLoadedRecords.find(r => r.sheetRowIndex === sheetRowIndex);
+            if (mainTarget) mainTarget.sheetStatus = newStatus;
+        }
+        updateAttendanceUIStats();
         updateKPIStats();
         updateChartsRealtime();
         syncRowToSheet(sheetRowIndex);
         showToast(`Updated Row #${sheetRowIndex} status to: ${newStatus}`, newStatus === 'Issue' ? 'error' : 'info');
+        renderRecipientTable();
     }
 }
 
@@ -1266,12 +1361,332 @@ function updateRowComment(sheetRowIndex, newComment) {
     const target = slicedBatchRecords.find(r => r.sheetRowIndex === sheetRowIndex);
     if (target) {
         target.comment = newComment;
+        if (allLoadedRecords) {
+            const mainTarget = allLoadedRecords.find(r => r.sheetRowIndex === sheetRowIndex);
+            if (mainTarget) mainTarget.comment = newComment;
+        }
+
+        // If the comment contains a WhatsApp group link, auto-activate it
+        const trimmed = String(newComment || '').trim();
+        if (trimmed.includes('chat.whatsapp.com') || trimmed.endsWith('@g.us')) {
+            activeWhatsAppGroupLink = trimmed;
+            const input = document.getElementById('attendance-group-link');
+            if (input) input.value = trimmed;
+            const badge = document.getElementById('group-link-detect-badge');
+            if (badge) badge.classList.remove('hidden');
+        }
+
         clearTimeout(commentDebounceTimer);
         commentDebounceTimer = setTimeout(() => {
             syncRowToSheet(sheetRowIndex);
         }, 600);
     }
 }
+
+// Attendance Summary Counts
+function updateAttendanceUIStats() {
+    const records = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : (allLoadedRecords || []);
+    const total = records.length;
+    const present = records.filter(r => r.sheetStatus === 'Attending' || r.sheetStatus === 'Present').length;
+    const absent = records.filter(r => r.sheetStatus === 'Absent').length;
+
+    const totalEl = document.getElementById('att-summary-total');
+    const presentEl = document.getElementById('att-summary-present');
+    const absentEl = document.getElementById('att-summary-absent');
+    const absentHeaderEl = document.getElementById('absent-header-count');
+    const absentBadgeEl = document.getElementById('absent-badge');
+    const presentBadgeEl = document.getElementById('present-badge');
+
+    if (totalEl) totalEl.textContent = total;
+    if (presentEl) presentEl.textContent = present;
+    if (absentEl) absentEl.textContent = absent;
+    if (absentHeaderEl) absentHeaderEl.textContent = absent;
+    if (absentBadgeEl) absentBadgeEl.textContent = absent;
+    if (presentBadgeEl) presentBadgeEl.textContent = present;
+}
+window.updateAttendanceUIStats = updateAttendanceUIStats;
+
+// WhatsApp Group Link Management
+let activeWhatsAppGroupLink = '';
+
+function onGroupLinkChange(val) {
+    activeWhatsAppGroupLink = String(val || '').trim();
+    const badge = document.getElementById('group-link-detect-badge');
+    if (badge) {
+        if (activeWhatsAppGroupLink.includes('chat.whatsapp.com') || activeWhatsAppGroupLink.endsWith('@g.us')) {
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+}
+window.onGroupLinkChange = onGroupLinkChange;
+
+function detectGroupLinkFromRecords(records) {
+    if (!records || records.length === 0) return;
+    for (const r of records) {
+        const comm = String(r.comment || '').trim();
+        if (comm.includes('chat.whatsapp.com') || comm.endsWith('@g.us')) {
+            activeWhatsAppGroupLink = comm;
+            const input = document.getElementById('attendance-group-link');
+            if (input) input.value = comm;
+            const badge = document.getElementById('group-link-detect-badge');
+            if (badge) badge.classList.remove('hidden');
+            break;
+        }
+    }
+}
+
+// ==========================================
+// Absent Members Group Mention Workflow
+// ==========================================
+function openAbsentMentionModal() {
+    const records = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : (allLoadedRecords || []);
+    const absentMembers = records.filter(r => r.sheetStatus === 'Absent');
+
+    const modal = document.getElementById('absent-mention-modal');
+    if (!modal) return;
+
+    const targetInput = document.getElementById('mention-group-target');
+    if (targetInput) {
+        if (!activeWhatsAppGroupLink) detectGroupLinkFromRecords(records);
+        targetInput.value = activeWhatsAppGroupLink || '';
+    }
+
+    const countEl = document.getElementById('modal-absent-count');
+    if (countEl) countEl.textContent = absentMembers.length;
+
+    const pillsEl = document.getElementById('modal-absent-pills');
+    if (pillsEl) {
+        if (absentMembers.length === 0) {
+            pillsEl.innerHTML = `<span class="text-xs text-on-surface-variant/80 italic p-1">No members are currently marked "Absent". Click "Absent" button on any contact in the table to add them here.</span>`;
+        } else {
+            pillsEl.innerHTML = absentMembers.map(m => `
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold">
+                    <span class="material-symbols-outlined text-[13px]">person</span>
+                    <span>${m.name}</span>
+                </span>
+            `).join('');
+        }
+    }
+
+    regenerateMentionMessage('ar');
+    modal.classList.remove('hidden');
+}
+window.openAbsentMentionModal = openAbsentMentionModal;
+
+function closeAbsentMentionModal() {
+    const modal = document.getElementById('absent-mention-modal');
+    if (modal) modal.classList.add('hidden');
+}
+window.closeAbsentMentionModal = closeAbsentMentionModal;
+
+function regenerateMentionMessage(lang) {
+    const records = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : (allLoadedRecords || []);
+    const absentMembers = records.filter(r => r.sheetStatus === 'Absent');
+    const groupName = getActiveGroupName();
+    const textarea = document.getElementById('modal-mention-textarea');
+    if (!textarea) return;
+
+    const mentionsList = absentMembers.length > 0 
+        ? absentMembers.map(m => `@${m.name}`).join('  ')
+        : '@Member1 @Member2';
+
+    let msg = '';
+    if (lang === 'ar') {
+        msg = [
+            `📋 *تقرير الحضور والغياب — ${groupName}*`,
+            ``,
+            `❌ *الأعضاء الغائبين (Absent Members):*`,
+            mentionsList,
+            ``,
+            `📌 *برجاء توضيح سبب عدم الحضور اليوم.*`,
+            ``,
+            `_تم الإرسال عبر نظام System Taha_`
+        ].join('\n');
+    } else {
+        msg = [
+            `📋 *Attendance Report — ${groupName}*`,
+            ``,
+            `❌ *Absent Members:*`,
+            mentionsList,
+            ``,
+            `📌 *Please let us know why you could not attend today's session.*`,
+            ``,
+            `_Sent via System Taha Dispatch System_`
+        ].join('\n');
+    }
+
+    textarea.value = msg;
+}
+window.regenerateMentionMessage = regenerateMentionMessage;
+
+async function sendAbsentMentionViaWebClient() {
+    const targetInput = document.getElementById('mention-group-target');
+    const textarea = document.getElementById('modal-mention-textarea');
+    const groupTarget = targetInput ? targetInput.value.trim() : '';
+    const message = textarea ? textarea.value.trim() : '';
+
+    if (!groupTarget) {
+        showToast('Please enter or paste the WhatsApp Group Link (e.g. https://chat.whatsapp.com/...)', 'error');
+        if (targetInput) targetInput.focus();
+        return;
+    }
+    if (!message) {
+        showToast('Please enter a message to send.', 'error');
+        return;
+    }
+
+    const records = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : (allLoadedRecords || []);
+    const absentList = records.filter(r => r.sheetStatus === 'Absent');
+
+    const btn = document.getElementById('btn-send-group-mention');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span> Sending...`;
+    }
+
+    addLog(`Sending attendance mention report to WhatsApp group: ${groupTarget}...`, 'system');
+
+    try {
+        let response = await fetch(`${socketServerUrl}/api/send-group-mention`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                groupTarget,
+                message,
+                absentList
+            })
+        });
+
+        // Fallback to /api/send-single-message if server was not restarted yet
+        if (response.status === 404) {
+            response = await fetch(`${socketServerUrl}/api/send-single-message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: groupTarget,
+                    name: 'Attendance Notice',
+                    message
+                })
+            });
+        }
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+            throw new Error(data.error || 'Failed to dispatch group mention.');
+        }
+
+        addLog(`✅ Successfully sent attendance mention report to WhatsApp group!`, 'success');
+        showToast('Attendance mention report sent to WhatsApp group successfully!', 'success');
+        closeAbsentMentionModal();
+    } catch (err) {
+        console.error(err);
+        addLog(`❌ Group mention error: ${err.message}`, 'error');
+        showToast(`Group mention error: ${err.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<span class="material-symbols-outlined text-[16px]">send</span><span>Send to Group Now</span>`;
+        }
+    }
+}
+window.sendAbsentMentionViaWebClient = sendAbsentMentionViaWebClient;
+
+function openAbsentMentionInWhatsApp() {
+    const targetInput = document.getElementById('mention-group-target');
+    const textarea = document.getElementById('modal-mention-textarea');
+    const groupTarget = targetInput ? targetInput.value.trim() : '';
+    const message = textarea ? textarea.value.trim() : '';
+
+    if (groupTarget.includes('chat.whatsapp.com')) {
+        copyAbsentMentionMessage();
+        window.open(groupTarget, '_blank');
+        showToast('Opened WhatsApp group link! Message copied to clipboard.', 'success');
+    } else {
+        const encoded = encodeURIComponent(message);
+        window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+    }
+}
+window.openAbsentMentionInWhatsApp = openAbsentMentionInWhatsApp;
+
+function copyAbsentMentionMessage() {
+    const textarea = document.getElementById('modal-mention-textarea');
+    if (!textarea) return;
+    navigator.clipboard.writeText(textarea.value).then(() => {
+        showToast('Mention message copied to clipboard!', 'success');
+    }).catch(() => {
+        textarea.select();
+        document.execCommand('copy');
+        showToast('Mention message copied to clipboard!', 'success');
+    });
+}
+window.copyAbsentMentionMessage = copyAbsentMentionMessage;
+
+// ==========================================
+// Google Contacts vCard (.vcf) Export
+// Format: Full Name (GroupName)
+// ==========================================
+function exportGoogleContactsVCF(filterType = 'all') {
+    const records = (slicedBatchRecords && slicedBatchRecords.length > 0) ? slicedBatchRecords : (allLoadedRecords || []);
+    if (!records || records.length === 0) {
+        showToast('No contacts loaded to export to Google Contacts.', 'warning');
+        return;
+    }
+
+    const groupName = getActiveGroupName();
+    let targets = records;
+    if (filterType === 'absent') {
+        targets = records.filter(r => r.sheetStatus === 'Absent');
+    }
+
+    if (targets.length === 0) {
+        showToast('No contacts match the export filter.', 'warning');
+        return;
+    }
+
+    // Build RFC 2426 vCard 3.0 content
+    let vcfContent = '';
+    targets.forEach(c => {
+        const rawName = (c.name || 'Customer').trim();
+        // Exact format requested: "Full Name (GroupName)"
+        const formattedName = `${rawName} (${groupName})`;
+        let phone = String(c.phone || '').replace(/\D/g, '');
+        if (!phone) return;
+
+        // Normalize to international format (+20 for Egypt)
+        let intlPhone = phone;
+        if (phone.startsWith('01') && phone.length === 11) {
+            intlPhone = '20' + phone.slice(1);
+        } else if (phone.startsWith('1') && phone.length === 10) {
+            intlPhone = '20' + phone;
+        }
+
+        vcfContent += `BEGIN:VCARD\r\n`;
+        vcfContent += `VERSION:3.0\r\n`;
+        vcfContent += `FN:${formattedName}\r\n`;
+        vcfContent += `N:${rawName};;;;\r\n`;
+        vcfContent += `TEL;TYPE=CELL,VOICE:+${intlPhone}\r\n`;
+        vcfContent += `CATEGORIES:${groupName}\r\n`;
+        vcfContent += `NOTE:System Taha | Group: ${groupName} | Status: ${c.sheetStatus || 'Active'}\r\n`;
+        vcfContent += `END:VCARD\r\n`;
+    });
+
+    const blob = new Blob([vcfContent], { type: 'text/vcard;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeGroupName = groupName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.download = `${safeGroupName}_Google_Contacts.vcf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    addLog(`✅ Exported ${targets.length} contacts formatted as "Name (${groupName})" for Google Contacts (.vcf)`, 'success');
+    showToast(`Saved ${targets.length} contacts as "Name (${groupName})"! Click the downloaded .vcf file to import into Google Contacts.`, 'success');
+}
+window.exportGoogleContactsVCF = exportGoogleContactsVCF;
 
 // API Call to Sync Status & Comment to Google Sheets
 async function syncRowToSheet(sheetRowIndex) {
@@ -2494,4 +2909,1066 @@ document.addEventListener('DOMContentLoaded', () => {
 // Also run immediately if DOM is already ready
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
     initSettingsUI();
+}
+
+// ============================================================================
+// ABSENT & WHATSAPP GROUP MENTION CONTROLLER (Dedicated Tab)
+// ============================================================================
+let absentTabAllRecords = [];
+let absentTabAttendingSet = new Set();
+let absentTabInitialized = false;
+let currentMentionFormatStyle = 'tag'; // 'tag' (@Phone (Name)) | 'name' (Name (@Phone))
+
+// Normalize phone number to international Egyptian format (20xxxxxxxxxx)
+function normalizeToIntlPhone(phone) {
+    const raw = String(phone || '').replace(/\D/g, '');
+    if (!raw) return '';
+    if (raw.startsWith('01') && raw.length === 11) {
+        return '20' + raw.slice(1);
+    }
+    if (raw.startsWith('1') && raw.length === 10) {
+        return '20' + raw;
+    }
+    if (raw.startsWith('20') && raw.length === 12) {
+        return raw;
+    }
+    return raw;
+}
+
+// Arabic text normalizer for accurate and tolerant name matching
+function normalizeArabicText(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/[\u064B-\u0652]/g, '') // remove tashkeel
+        .replace(/[أإآ]/g, 'ا')          // normalize Alef
+        .replace(/ى/g, 'ي')              // normalize Ya
+        .replace(/ة/g, 'ه')              // normalize Ta Marbuta
+        .replace(/[ؤئ]/g, 'ء')           // normalize Hamza
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// Retrieve loaded records with fallback to avoid blank state
+function getAvailableSheetRecords() {
+    if (slicedBatchRecords && slicedBatchRecords.length > 0) {
+        return slicedBatchRecords;
+    }
+    if (allLoadedRecords && allLoadedRecords.length > 0) {
+        return allLoadedRecords;
+    }
+    return [
+        { name: 'Dr. Ahmed', phone: '01025485279', sheetRowIndex: 2, sheetStatus: 'Absent', comment: '' },
+        { name: 'Tasnim', phone: '01009202137', sheetRowIndex: 3, sheetStatus: 'Absent', comment: '' },
+        { name: 'Taha', phone: '01276800187', sheetRowIndex: 4, sheetStatus: 'Absent', comment: '' }
+    ];
+}
+
+// Helper to get stable identifier for a record
+function getRecordKey(r) {
+    if (!r) return Math.random().toString();
+    if (r.sheetRowIndex !== undefined && r.sheetRowIndex !== null) {
+        return `row_${r.sheetRowIndex}`;
+    }
+    const cleanPhone = String(r.phone || '').replace(/\D/g, '');
+    if (cleanPhone) return `phone_${cleanPhone}`;
+    return `name_${r.name}`;
+}
+
+// Initialize Absent Tab
+function initAbsentTab(forceReload = false) {
+    const linkInput = document.getElementById('absent-tab-group-link');
+    const savedLink = localStorage.getItem('absent_tab_group_link') || '';
+    
+    // Auto-detect link from Sheet Col D (comment) if localStorage is empty
+    let groupLink = savedLink;
+    if (!groupLink) {
+        const pool = getAvailableSheetRecords();
+        const found = pool.find(r => r.comment && (r.comment.includes('chat.whatsapp.com') || r.comment.endsWith('@g.us')));
+        if (found) {
+            const match = found.comment.match(/https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/);
+            groupLink = match ? match[0] : found.comment.trim();
+        }
+    }
+
+    if (linkInput && (!linkInput.value || forceReload)) {
+        linkInput.value = groupLink;
+    }
+    updateAbsentGroupLinkStatusBadge(linkInput ? linkInput.value : groupLink);
+
+    if (!absentTabInitialized || forceReload || absentTabAllRecords.length === 0) {
+        absentTabAllRecords = getAvailableSheetRecords().map(r => ({
+            ...r,
+            sheetStatus: 'Absent' // Everyone defaults to Absent
+        }));
+        absentTabAttendingSet.clear();
+        absentTabInitialized = true;
+    }
+
+    renderAbsentTabList();
+    updateAbsentTabMentionPreview();
+}
+window.initAbsentTab = initAbsentTab;
+
+// Update Link Status Badge
+function updateAbsentGroupLinkStatusBadge(link) {
+    const badge = document.getElementById('absent-group-link-status');
+    if (!badge) return;
+    const clean = (link || '').trim();
+    if (clean.includes('chat.whatsapp.com') || clean.endsWith('@g.us')) {
+        badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span><span>Ready / Linked</span>`;
+        badge.className = 'text-[10px] font-mono font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1';
+    } else if (clean) {
+        badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span><span>Custom Target</span>`;
+        badge.className = 'text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1';
+    } else {
+        badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span><span>No Link Set</span>`;
+        badge.className = 'text-[10px] font-mono font-bold text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1';
+    }
+}
+
+// Group link change listener in UI
+function onAbsentTabGroupLinkChange(val) {
+    const clean = (val || '').trim();
+    localStorage.setItem('absent_tab_group_link', clean);
+    updateAbsentGroupLinkStatusBadge(clean);
+}
+window.onAbsentTabGroupLinkChange = onAbsentTabGroupLinkChange;
+
+// Test open group link
+function testOpenGroupLink() {
+    const linkInput = document.getElementById('absent-tab-group-link');
+    const link = linkInput ? linkInput.value.trim() : '';
+    if (!link) {
+        showToast('Please enter or paste the WhatsApp Group link first.', 'warning');
+        if (linkInput) linkInput.focus();
+        return;
+    }
+    if (link.startsWith('http://') || link.startsWith('https://')) {
+        window.open(link, '_blank');
+    } else {
+        showToast('Invalid URL. Link should start with https://chat.whatsapp.com/', 'warning');
+    }
+}
+window.testOpenGroupLink = testOpenGroupLink;
+
+// Toggle Mention Format Style
+function setMentionFormatStyle(style) {
+    currentMentionFormatStyle = style;
+    const btnTag = document.getElementById('btn-mention-style-tag');
+    const btnName = document.getElementById('btn-mention-style-name');
+
+    if (style === 'tag') {
+        if (btnTag) {
+            btnTag.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-primary text-on-primary shadow-sm';
+        }
+        if (btnName) {
+            btnName.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-surface-container text-on-surface hover:bg-surface-container-highest';
+        }
+    } else {
+        if (btnName) {
+            btnName.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-primary text-on-primary shadow-sm';
+        }
+        if (btnTag) {
+            btnTag.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-surface-container text-on-surface hover:bg-surface-container-highest';
+        }
+    }
+
+    updateAbsentTabMentionPreview();
+}
+window.setMentionFormatStyle = setMentionFormatStyle;
+
+// Render Absent List & Present List (Clean English UI)
+function renderAbsentTabList() {
+    const absentContainer = document.getElementById('absent-members-container');
+    const presentContainer = document.getElementById('present-members-container');
+
+    const absentList = absentTabAllRecords.filter(r => !absentTabAttendingSet.has(getRecordKey(r)));
+    const presentList = absentTabAllRecords.filter(r => absentTabAttendingSet.has(getRecordKey(r)));
+
+    // Update Counts
+    const absentCountEl = document.getElementById('absent-tab-count');
+    const activeAbsentListCountEl = document.getElementById('active-absent-list-count');
+    const presentCountEl = document.getElementById('present-tab-count');
+    const accordionPresentCountEl = document.getElementById('accordion-present-count');
+
+    if (absentCountEl) absentCountEl.textContent = absentList.length;
+    if (activeAbsentListCountEl) activeAbsentListCountEl.textContent = absentList.length;
+    if (presentCountEl) presentCountEl.textContent = presentList.length;
+    if (accordionPresentCountEl) accordionPresentCountEl.textContent = presentList.length;
+
+    // Render Active Absent Container
+    if (absentContainer) {
+        if (absentList.length === 0) {
+            absentContainer.innerHTML = `
+                <div class="p-10 text-center space-y-2">
+                    <div class="w-12 h-12 mx-auto rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-[28px]">task_alt</span>
+                    </div>
+                    <div class="font-bold text-sm text-on-surface">All members marked Present! 🎉</div>
+                    <p class="text-xs text-on-surface-variant">There are no remaining absent contacts to mention in the group.</p>
+                </div>
+            `;
+        } else {
+            absentContainer.innerHTML = absentList.map((person, idx) => {
+                const key = getRecordKey(person);
+                const safeName = (person.name || 'Member').trim();
+                const intlPhone = normalizeToIntlPhone(person.phone);
+                const rowLabel = person.sheetRowIndex ? `Row #${person.sheetRowIndex}` : 'Manual';
+
+                return `
+                    <div class="p-3.5 px-4 flex items-center justify-between gap-3 hover:bg-surface-container/40 transition-colors group">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center text-[11px] font-mono font-bold text-on-surface-variant flex-shrink-0">
+                                ${idx + 1}
+                            </span>
+                            <div class="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                                ${safeName.charAt(0).toUpperCase() || '?'}
+                            </div>
+                            <div class="min-w-0">
+                                <div class="font-bold text-xs text-on-surface truncate flex items-center gap-2">
+                                    <span>${safeName}</span>
+                                    <span class="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30">ABSENT</span>
+                                </div>
+                                <div class="text-[10px] text-on-surface-variant font-mono truncate flex items-center gap-2 mt-0.5">
+                                    <span>+${intlPhone || person.phone || 'No Phone'}</span>
+                                    <span class="text-outline-variant">•</span>
+                                    <span>${rowLabel}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mark Present Button (Immediately vanishes person from active view) -->
+                        <button type="button" 
+                            onclick="markPersonPresentInTab('${key}')" 
+                            class="flex-shrink-0 px-3.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-white border border-emerald-500/30 hover:border-emerald-500 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                            title="Mark present (removes immediately from absent list)">
+                            <span class="material-symbols-outlined text-[15px]">check</span>
+                            <span>Present</span>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    // Render Present Container
+    if (presentContainer) {
+        if (presentList.length === 0) {
+            presentContainer.innerHTML = `
+                <div class="p-4 text-center text-xs text-on-surface-variant font-medium">
+                    No members marked present yet. Everyone is absent by default.
+                </div>
+            `;
+        } else {
+            presentContainer.innerHTML = presentList.map((person, idx) => {
+                const key = getRecordKey(person);
+                const safeName = (person.name || 'Member').trim();
+                const intlPhone = normalizeToIntlPhone(person.phone);
+
+                return `
+                    <div class="p-2.5 px-3 rounded-xl bg-surface-container/60 border border-emerald-500/20 flex items-center justify-between gap-3 text-xs">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <span class="material-symbols-outlined text-emerald-400 text-[18px]">check_circle</span>
+                            <div class="min-w-0">
+                                <span class="font-bold text-on-surface truncate">${safeName}</span>
+                                <span class="text-[10px] text-on-surface-variant font-mono mr-2">(+${intlPhone})</span>
+                            </div>
+                        </div>
+
+                        <!-- Undo / Return to Absent Button -->
+                        <button type="button" 
+                            onclick="returnPersonToAbsentTab('${key}')" 
+                            class="px-2.5 py-1 rounded-lg bg-surface-container hover:bg-rose-500/20 text-on-surface-variant hover:text-rose-300 border border-outline-variant/30 text-[10px] font-bold flex items-center gap-1 transition-all"
+                            title="Undo attendance and return to absent list">
+                            <span class="material-symbols-outlined text-[13px]">undo</span>
+                            <span>Undo</span>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    updateAbsentTabMentionPreview();
+}
+window.renderAbsentTabList = renderAbsentTabList;
+
+// Mark Person as Present -> Immediately vanishes from active view
+function markPersonPresentInTab(key) {
+    if (!key) return;
+    absentTabAttendingSet.add(key);
+
+    const person = absentTabAllRecords.find(r => getRecordKey(r) === key);
+    if (person) {
+        person.sheetStatus = 'Attending';
+        if (slicedBatchRecords && slicedBatchRecords.length > 0) {
+            const batchMatch = slicedBatchRecords.find(r => getRecordKey(r) === key);
+            if (batchMatch) {
+                batchMatch.sheetStatus = 'Attending';
+                if (batchMatch.sheetRowIndex) {
+                    syncRowToSheet(batchMatch.sheetRowIndex);
+                }
+            }
+        }
+        showToast(`Marked "${person.name}" as Present. Removed from absent list.`, 'success');
+    }
+
+    renderAbsentTabList();
+}
+window.markPersonPresentInTab = markPersonPresentInTab;
+
+// Return Person back to Absent list
+function returnPersonToAbsentTab(key) {
+    if (!key) return;
+    absentTabAttendingSet.delete(key);
+
+    const person = absentTabAllRecords.find(r => getRecordKey(r) === key);
+    if (person) {
+        person.sheetStatus = 'Absent';
+        if (slicedBatchRecords && slicedBatchRecords.length > 0) {
+            const batchMatch = slicedBatchRecords.find(r => getRecordKey(r) === key);
+            if (batchMatch) {
+                batchMatch.sheetStatus = 'Absent';
+                if (batchMatch.sheetRowIndex) {
+                    syncRowToSheet(batchMatch.sheetRowIndex);
+                }
+            }
+        }
+        showToast(`Returned "${person.name}" to Absent list.`, 'info');
+    }
+
+    renderAbsentTabList();
+}
+window.returnPersonToAbsentTab = returnPersonToAbsentTab;
+
+// Mark All in Tab
+function markAllAbsentTab(allPresent) {
+    if (allPresent) {
+        absentTabAllRecords.forEach(r => {
+            absentTabAttendingSet.add(getRecordKey(r));
+            r.sheetStatus = 'Attending';
+        });
+        showToast('Marked all members as Present.', 'success');
+    } else {
+        absentTabAttendingSet.clear();
+        absentTabAllRecords.forEach(r => {
+            r.sheetStatus = 'Absent';
+        });
+        showToast('Reset all members back to Absent.', 'info');
+    }
+    renderAbsentTabList();
+}
+window.markAllAbsentTab = markAllAbsentTab;
+
+// Toggle Present Accordion
+function togglePresentAccordion() {
+    const container = document.getElementById('present-members-container');
+    const chevron = document.getElementById('accordion-present-chevron');
+    if (!container) return;
+    const isHidden = container.classList.contains('hidden');
+    if (isHidden) {
+        container.classList.remove('hidden');
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+    } else {
+        container.classList.add('hidden');
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+    }
+}
+window.togglePresentAccordion = togglePresentAccordion;
+
+// Match and Filter Absent Names from Textarea
+function matchAndFilterAbsentNames() {
+    const textarea = document.getElementById('manual-absent-names-textarea');
+    const rawInput = textarea ? textarea.value.trim() : '';
+    const pool = getAvailableSheetRecords();
+
+    if (!rawInput) {
+        absentTabAllRecords = pool.map(r => ({ ...r, sheetStatus: 'Absent' }));
+        absentTabAttendingSet.clear();
+        renderAbsentTabList();
+        showToast('Reloaded all sheet contacts into absent list.', 'info');
+        return;
+    }
+
+    const rawNames = rawInput
+        .split(/[\n,;]+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+    if (rawNames.length === 0) {
+        showToast('Please type at least one name to filter.', 'warning');
+        return;
+    }
+
+    const matchedRecords = [];
+    let matchCount = 0;
+
+    rawNames.forEach(rawName => {
+        const normInput = normalizeArabicText(rawName);
+        const rawDigits = rawName.replace(/\D/g, '');
+
+        // Search in loaded sheet records
+        const found = pool.find(rec => {
+            const normRec = normalizeArabicText(rec.name || '');
+            const recPhone = String(rec.phone || '').replace(/\D/g, '');
+            if (rawDigits && (recPhone.includes(rawDigits) || rawDigits.includes(recPhone))) return true;
+            if (!normRec || !normInput) return false;
+            return normRec.includes(normInput) || normInput.includes(normRec);
+        });
+
+        if (found) {
+            matchCount++;
+            matchedRecords.push({
+                ...found,
+                sheetStatus: 'Absent'
+            });
+        } else {
+            matchedRecords.push({
+                name: rawName,
+                phone: rawDigits || 'Manual',
+                sheetRowIndex: null,
+                sheetStatus: 'Absent',
+                comment: ''
+            });
+        }
+    });
+
+    absentTabAllRecords = matchedRecords;
+    absentTabAttendingSet.clear();
+    renderAbsentTabList();
+
+    addLog(`Matched ${matchCount} of ${rawNames.length} names from Google Sheet for Absent List`, 'system');
+    showToast(`Matched ${matchCount} of ${rawNames.length} names from sheet!`, 'success');
+}
+window.matchAndFilterAbsentNames = matchAndFilterAbsentNames;
+
+// Build the final WhatsApp mention message text
+function getAbsentTabMessageText() {
+    const absentList = absentTabAllRecords.filter(r => !absentTabAttendingSet.has(getRecordKey(r)));
+    const footerInput = document.getElementById('absent-message-footer-input');
+    const footerNote = footerInput ? footerInput.value.trim() : 'فينكم يا شباب مستنيكم تدخلو عشان الغياب';
+
+    if (absentList.length === 0) {
+        return `🎉 All members are present today!\n\n_Generated via System Taha_`;
+    }
+
+    // Format lines:
+    // When using WhatsApp Web API with mentions, WhatsApp requires the phone number prefixed with '@':
+    // Example: 1 - @201025485279 (Dr. Ahmed)
+    const lines = absentList.map((person, idx) => {
+        const cleanName = (person.name || 'Member').trim();
+        const intlPhone = normalizeToIntlPhone(person.phone);
+
+        if (currentMentionFormatStyle === 'name') {
+            return intlPhone 
+                ? `${idx + 1} - ${cleanName} (@${intlPhone})`
+                : `${idx + 1} - @${cleanName}`;
+        } else {
+            // Default 'tag' style: @Phone (Name)
+            return intlPhone 
+                ? `${idx + 1} - @${intlPhone} (${cleanName})`
+                : `${idx + 1} - @${cleanName}`;
+        }
+    });
+
+    if (footerNote) {
+        lines.push('');
+        lines.push(footerNote);
+    }
+
+    return lines.join('\n');
+}
+
+// Update the live preview box in the UI
+function updateAbsentTabMentionPreview() {
+    const previewBox = document.getElementById('absent-message-preview-box');
+    if (!previewBox) return;
+    previewBox.textContent = getAbsentTabMessageText();
+}
+window.updateAbsentTabMentionPreview = updateAbsentTabMentionPreview;
+
+// Copy Mention Message to Clipboard
+function copyAbsentTabMessageText() {
+    const text = getAbsentTabMessageText();
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Mention message copied to clipboard!', 'success');
+    }).catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showToast('Mention message copied to clipboard!', 'success');
+    });
+}
+window.copyAbsentTabMessageText = copyAbsentTabMessageText;
+
+// Open WhatsApp Group directly
+function openAbsentTabWhatsAppWeb() {
+    const linkInput = document.getElementById('absent-tab-group-link');
+    const link = linkInput ? linkInput.value.trim() : '';
+    if (!link) {
+        showToast('Please enter WhatsApp group link first.', 'warning');
+        if (linkInput) linkInput.focus();
+        return;
+    }
+
+    copyAbsentTabMessageText();
+    if (link.startsWith('http://') || link.startsWith('https://')) {
+        window.open(link, '_blank');
+        showToast('Opened group link! Message copied to clipboard.', 'success');
+    } else {
+        showToast('Invalid WhatsApp group link.', 'error');
+    }
+}
+window.openAbsentTabWhatsAppWeb = openAbsentTabWhatsAppWeb;
+
+// Direct Send Mention to WhatsApp Group
+async function sendAbsentTabMentionDirect() {
+    const linkInput = document.getElementById('absent-tab-group-link');
+    const groupTarget = linkInput ? linkInput.value.trim() : '';
+    const absentList = absentTabAllRecords.filter(r => !absentTabAttendingSet.has(getRecordKey(r)));
+    const message = getAbsentTabMessageText();
+
+    if (!groupTarget) {
+        showToast('Please enter or paste the WhatsApp Group link in the field above.', 'error');
+        if (linkInput) linkInput.focus();
+        return;
+    }
+
+    if (absentList.length === 0) {
+        showToast('No absent members to mention. All members are marked Present!', 'info');
+        return;
+    }
+
+    const btn = document.getElementById('btn-send-absent-tab-group');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span> Dispatching to Group...`;
+    }
+
+    addLog(`Dispatching absent mention report to group: ${groupTarget}...`, 'system');
+
+    try {
+        const response = await fetch(`${socketServerUrl}/api/send-group-mention`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                groupTarget,
+                message,
+                absentList
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+            throw new Error(data.error || 'Failed to dispatch group mention.');
+        }
+
+        addLog(`✅ Successfully dispatched attendance mention to WhatsApp group! (${data.count || absentList.length} tags resolved)`, 'success');
+        showToast(`Sent mention message to WhatsApp group successfully! (${absentList.length} absent tagged)`, 'success');
+
+        // Batch update Google Sheet status to Absent for remaining and Attending for present
+        if (currentSpreadsheetId) {
+            const updates = [];
+            absentTabAllRecords.forEach(r => {
+                if (r.sheetRowIndex) {
+                    const isAttending = absentTabAttendingSet.has(getRecordKey(r));
+                    updates.push({
+                        sheetRowIndex: r.sheetRowIndex,
+                        status: isAttending ? 'Attending' : 'Absent'
+                    });
+                }
+            });
+
+            if (updates.length > 0) {
+                fetch(`${socketServerUrl}/api/batch-update-attendance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        spreadsheetId: currentSpreadsheetId,
+                        updates
+                    })
+                }).then(res => res.json()).then(resData => {
+                    if (resData.success) {
+                        addLog(`Synced ${updates.length} attendance statuses to Google Sheet (Col C).`, 'success');
+                    }
+                }).catch(e => console.warn('Background sheet sync warning:', e.message));
+            }
+        }
+    } catch (err) {
+        console.error('Group mention error:', err);
+        addLog(`❌ Group mention error: ${err.message}`, 'error');
+        showToast(`Group mention error: ${err.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<span class="material-symbols-outlined text-[18px]">send</span><span>Send Group Mention Now</span>`;
+        }
+    }
+}
+window.sendAbsentTabMentionDirect = sendAbsentTabMentionDirect;
+
+// Refresh Data from Sheet
+function refreshAbsentTabData() {
+    absentTabInitialized = false;
+    const textarea = document.getElementById('manual-absent-names-textarea');
+    if (textarea) textarea.value = '';
+    initAbsentTab(true);
+    showToast('Attendance data refreshed from Sheet.', 'success');
+}
+window.refreshAbsentTabData = refreshAbsentTabData;
+
+
+// ==========================================
+// Online Sheet — Group Schedule Feature
+// Backed by Google Sheets API
+// ==========================================
+
+const ONLINE_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1Vo0FNrZCBDFsjpqaP5Sao2zCEQ2BIaQhyWsboR9PuSs/edit?usp=sharing';
+
+// Arabic day names — matching what's written in column D
+const DAY_NAMES    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAY_NAMES_AR = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+
+// State
+let _onlineSheetGroups = [];
+let _onlineSheetActiveId = null;
+let _onlineSheetCurrentFilter = 'today'; // 'today' | 'all' | 'custom'
+let _onlineSheetDayFilter = '';
+let _onlineSheetSearchQuery = '';
+
+// Helper: Normalize Arabic text for resilient matching
+function normalizeArabicDay(str) {
+    if (!str) return '';
+    return String(str)
+        .trim()
+        .replace(/[إأآا]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/ى/g, 'ي')
+        .toLowerCase();
+}
+
+function getTodayArabicName() {
+    const dayIdx = new Date().getDay();
+    return DAY_NAMES_AR[dayIdx];
+}
+
+// ── Get current configured Sheet URL or ID ──
+function getOnlineSheetUrl() {
+    const input = document.getElementById('online-sheet-url-input');
+    if (input && input.value.trim()) {
+        return input.value.trim();
+    }
+    return localStorage.getItem('online_sheet_url') || ONLINE_SHEET_DEFAULT_URL;
+}
+
+// ── On URL input change ──
+function onOnlineSheetUrlChange() {
+    const input = document.getElementById('online-sheet-url-input');
+    if (!input) return;
+    const url = input.value.trim() || ONLINE_SHEET_DEFAULT_URL;
+    localStorage.setItem('online_sheet_url', url);
+
+    const openLink = document.getElementById('online-sheet-open-link');
+    if (openLink) openLink.href = url;
+
+    fetchOnlineSheetGroups();
+}
+window.onOnlineSheetUrlChange = onOnlineSheetUrlChange;
+
+// ── Fetch all groups from the backend (reads Google Sheet dynamically) ──
+async function fetchOnlineSheetGroups() {
+    const container = document.getElementById('online-sheet-list');
+    const fetchBtn = document.getElementById('btn-fetch-online-sheet');
+    const url = getOnlineSheetUrl();
+
+    // Update input and link if needed
+    const input = document.getElementById('online-sheet-url-input');
+    if (input && input.value !== url) input.value = url;
+    const openLink = document.getElementById('online-sheet-open-link');
+    if (openLink) openLink.href = url;
+
+    // Loading UI
+    if (container) {
+        container.innerHTML = `
+            <div class="col-span-full flex flex-col items-center justify-center gap-2 py-10 text-xs text-on-surface-variant opacity-70">
+                <span class="material-symbols-outlined text-[24px] text-violet-400 animate-spin">progress_activity</span>
+                <span>Loading group schedules from Google Sheet...</span>
+            </div>`;
+    }
+    if (fetchBtn) {
+        fetchBtn.disabled = true;
+        fetchBtn.classList.add('opacity-75');
+    }
+
+    try {
+        const res = await fetch(`${socketServerUrl}/api/online-sheet/groups?sheetId=${encodeURIComponent(url)}`);
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to fetch');
+
+        _onlineSheetGroups = data.groups || [];
+
+        // Update counts
+        updateOnlineSheetCounts();
+
+        // Apply active filter and render
+        applyOnlineSheetFilters();
+
+        if (_onlineSheetGroups.length > 0) {
+            addLog(`Online Sheet: Loaded ${_onlineSheetGroups.length} group(s) from Google Sheet.`, 'system');
+            showToast(`✅ Loaded ${_onlineSheetGroups.length} group(s) from Sheet!`, 'success');
+        } else {
+            showToast('Sheet connected, but no groups recorded.', 'info');
+        }
+    } catch (err) {
+        console.error('Online sheet fetch error:', err);
+        if (container) {
+            container.innerHTML = `
+                <div class="col-span-full text-center text-xs text-rose-400 py-6 space-y-2 bg-rose-500/10 border border-rose-500/20 rounded-xl p-4">
+                    <span class="material-symbols-outlined text-[24px] block mx-auto text-rose-400">error</span>
+                    <div class="font-bold">Failed to load groups from Google Sheet</div>
+                    <div class="text-[11px] text-on-surface-variant font-mono">${err.message}</div>
+                    <button type="button" onclick="fetchOnlineSheetGroups()" class="mt-2 px-3 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-[11px] font-bold inline-flex items-center gap-1 transition-all">
+                        <span class="material-symbols-outlined text-[13px]">sync</span> Retry
+                    </button>
+                </div>`;
+        }
+        showToast('Failed to load Sheet: ' + err.message, 'error');
+    } finally {
+        if (fetchBtn) {
+            fetchBtn.disabled = false;
+            fetchBtn.classList.remove('opacity-75');
+        }
+    }
+}
+window.fetchOnlineSheetGroups = fetchOnlineSheetGroups;
+
+// ── Update counters & badges in the UI ──
+function updateOnlineSheetCounts() {
+    const todayAr = getTodayArabicName();
+    const todayNorm = normalizeArabicDay(todayAr);
+
+    const todayCount = _onlineSheetGroups.filter(g => {
+        const dNorm = normalizeArabicDay(g.date);
+        return dNorm === todayNorm || dNorm.includes(todayNorm);
+    }).length;
+
+    const totalCount = _onlineSheetGroups.length;
+
+    const countBadge = document.getElementById('online-sheet-count-badge');
+    if (countBadge) countBadge.textContent = `${totalCount} Groups`;
+
+    const allCountBadge = document.getElementById('online-sheet-all-count');
+    if (allCountBadge) allCountBadge.textContent = String(totalCount);
+
+    const todayCountBadge = document.getElementById('online-sheet-today-count');
+    if (todayCountBadge) todayCountBadge.textContent = String(todayCount);
+
+    const todayLabel = document.getElementById('online-sheet-today-label');
+    if (todayLabel) todayLabel.textContent = todayAr;
+}
+
+// ── Switch filter (today vs all) ──
+function filterOnlineSheet(mode) {
+    _onlineSheetCurrentFilter = mode;
+    _onlineSheetDayFilter = '';
+
+    const daySelect = document.getElementById('online-sheet-day-filter');
+    if (daySelect) daySelect.value = '';
+
+    // Update button states
+    const btnToday = document.getElementById('btn-filter-today');
+    const btnAll = document.getElementById('btn-filter-all');
+
+    if (mode === 'today') {
+        if (btnToday) {
+            btnToday.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 text-xs font-bold transition-all shadow-sm ring-1 ring-emerald-500/30';
+        }
+        if (btnAll) {
+            btnAll.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-highest text-on-surface-variant border border-outline-variant/30 text-xs font-semibold transition-all';
+        }
+    } else {
+        if (btnAll) {
+            btnAll.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/25 text-violet-300 border border-violet-500/50 text-xs font-bold transition-all shadow-sm ring-1 ring-violet-500/30';
+        }
+        if (btnToday) {
+            btnToday.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-highest text-on-surface-variant border border-outline-variant/30 text-xs font-semibold transition-all';
+        }
+    }
+
+    applyOnlineSheetFilters();
+}
+window.filterOnlineSheet = filterOnlineSheet;
+
+// ── Filter by specific day ──
+function filterOnlineSheetByDay(day) {
+    _onlineSheetDayFilter = (day || '').trim();
+    if (_onlineSheetDayFilter) {
+        _onlineSheetCurrentFilter = 'custom';
+        const btnToday = document.getElementById('btn-filter-today');
+        const btnAll = document.getElementById('btn-filter-all');
+        if (btnToday) btnToday.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-highest text-on-surface-variant border border-outline-variant/30 text-xs font-semibold transition-all';
+        if (btnAll) btnAll.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-highest text-on-surface-variant border border-outline-variant/30 text-xs font-semibold transition-all';
+    } else {
+        filterOnlineSheet('all');
+        return;
+    }
+    applyOnlineSheetFilters();
+}
+window.filterOnlineSheetByDay = filterOnlineSheetByDay;
+
+// ── Live Search ──
+function onOnlineSheetSearch(query) {
+    _onlineSheetSearchQuery = (query || '').trim().toLowerCase();
+    applyOnlineSheetFilters();
+}
+window.onOnlineSheetSearch = onOnlineSheetSearch;
+
+// ── Apply all active filters ──
+function applyOnlineSheetFilters() {
+    const todayAr = getTodayArabicName();
+    const todayNorm = normalizeArabicDay(todayAr);
+
+    let filtered = [..._onlineSheetGroups];
+
+    // Filter by mode / day
+    if (_onlineSheetCurrentFilter === 'today') {
+        filtered = filtered.filter(g => {
+            const dNorm = normalizeArabicDay(g.date);
+            return dNorm === todayNorm || dNorm.includes(todayNorm);
+        });
+    } else if (_onlineSheetCurrentFilter === 'custom' && _onlineSheetDayFilter) {
+        const targetNorm = normalizeArabicDay(_onlineSheetDayFilter);
+        filtered = filtered.filter(g => {
+            const dNorm = normalizeArabicDay(g.date);
+            return dNorm === targetNorm || dNorm.includes(targetNorm);
+        });
+    }
+
+    // Filter by search query
+    if (_onlineSheetSearchQuery) {
+        filtered = filtered.filter(g => {
+            const name = (g.name || '').toLowerCase();
+            const date = (g.date || '').toLowerCase();
+            const time = (g.time || '').toLowerCase();
+            return name.includes(_onlineSheetSearchQuery) || date.includes(_onlineSheetSearchQuery) || time.includes(_onlineSheetSearchQuery);
+        });
+    }
+
+    renderOnlineSheetList(filtered, _onlineSheetActiveId);
+}
+
+// ── Activate a group → load its link into the WA target input ──
+function activateOnlineSheetGroup(id) {
+    const group = _onlineSheetGroups.find(g => g.id === id);
+    if (!group) return;
+
+    _onlineSheetActiveId = id;
+
+    // 1. Update the Target WhatsApp Group Link input
+    const linkInput = document.getElementById('absent-tab-group-link');
+    if (linkInput) {
+        linkInput.value = group.link;
+        if (typeof onAbsentTabGroupLinkChange === 'function') {
+            onAbsentTabGroupLinkChange(group.link);
+        }
+    }
+
+    // 2. Update globals and localStorage
+    if (typeof activeWhatsAppGroupLink !== 'undefined') {
+        activeWhatsAppGroupLink = group.link;
+    }
+    localStorage.setItem('absent_tab_group_link', group.link);
+
+    if (typeof updateAbsentGroupLinkStatusBadge === 'function') {
+        updateAbsentGroupLinkStatusBadge(group.link);
+    }
+
+    // 3. Update the active banner
+    const banner = document.getElementById('online-sheet-active-banner');
+    const bannerName = document.getElementById('online-sheet-active-name');
+    if (banner && bannerName) {
+        banner.classList.remove('hidden');
+        bannerName.textContent = `${group.name}  •  ${group.date || ''}  ${group.time || ''}`;
+    }
+
+    showToast(`🎯 Target set to "${group.name}"!`, 'success');
+    addLog(`Online Sheet: Activated "${group.name}" → ${group.link}`, 'system');
+
+    // Re-render list to reflect active state
+    applyOnlineSheetFilters();
+}
+window.activateOnlineSheetGroup = activateOnlineSheetGroup;
+
+// ── Copy group invite link ──
+function copyOnlineGroupLink(event, link) {
+    if (event) event.stopPropagation();
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => {
+        showToast('Group link copied ✅', 'success');
+    }).catch(() => {
+        showToast('Failed to copy', 'warning');
+    });
+}
+window.copyOnlineGroupLink = copyOnlineGroupLink;
+
+// ── Render the groups list in the UI ──
+function renderOnlineSheetList(list, activeId) {
+    const container = document.getElementById('online-sheet-list');
+    if (!container) return;
+
+    const todayAr = getTodayArabicName();
+    const todayNorm = normalizeArabicDay(todayAr);
+
+    if (!list || list.length === 0) {
+        const isFilterActive = _onlineSheetCurrentFilter === 'today' || _onlineSheetDayFilter || _onlineSheetSearchQuery;
+        container.innerHTML = `
+            <div class="col-span-full text-center text-xs text-on-surface-variant py-8 opacity-75 space-y-2 bg-surface-container/20 border border-outline-variant/20 rounded-xl p-5">
+                <span class="material-symbols-outlined text-[28px] block mx-auto text-violet-400/60">inbox</span>
+                <div class="font-bold text-on-surface">
+                    ${_onlineSheetCurrentFilter === 'today' ? `No groups scheduled for ${todayAr}` : 'No groups matching your search'}
+                </div>
+                <div class="text-[11px] text-on-surface-variant">
+                    ${isFilterActive ? 'Try selecting "All" or verify the data in your Google Sheet.' : 'Make sure data exists in columns A, B, C, and D.'}
+                </div>
+                ${isFilterActive ? `
+                    <button type="button" onclick="filterOnlineSheet('all')" class="mt-2 px-3 py-1.5 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 border border-violet-500/30 text-xs font-bold transition-all">
+                        Show All Groups (${_onlineSheetGroups.length})
+                    </button>
+                ` : ''}
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = list.map(g => {
+        const dNorm = normalizeArabicDay(g.date);
+        const isToday  = dNorm === todayNorm || dNorm.includes(todayNorm);
+        const isActive = g.id === (_onlineSheetActiveId);
+        const timeDisplay = g.time || '--:--';
+        const dayDisplay = g.date || '—';
+        const safeId = String(g.id).replace(/'/g, '');
+        const safeLink = (g.link || '');
+        const shortLink = safeLink.replace('https://chat.whatsapp.com/', '');
+        const trimmedShortLink = shortLink.length > 18 ? shortLink.substring(0, 18) + '…' : shortLink;
+
+        return `
+            <div class="group relative flex flex-col justify-between p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer select-none
+                ${isActive
+                    ? 'bg-gradient-to-br from-violet-950/60 to-violet-900/30 border-violet-400 ring-2 ring-violet-500/50 shadow-lg shadow-violet-950/40'
+                    : isToday
+                        ? 'bg-gradient-to-br from-emerald-950/30 via-surface-container/60 to-surface-container/40 border-emerald-500/40 hover:border-emerald-400/70 hover:shadow-md'
+                        : 'bg-surface-container/40 border-outline-variant/30 hover:bg-surface-container/70 hover:border-violet-500/40 hover:shadow-sm'}"
+                onclick="activateOnlineSheetGroup('${safeId}')">
+
+                <!-- Top Row: Name & Badges -->
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                        <span class="p-1.5 rounded-xl flex-shrink-0
+                            ${isActive ? 'bg-violet-500/30 text-violet-200' : isToday ? 'bg-emerald-500/20 text-emerald-300' : 'bg-surface-container-highest text-on-surface-variant'}">
+                            <span class="material-symbols-outlined text-[16px] block">group</span>
+                        </span>
+                        <div class="min-w-0">
+                            <div class="font-bold text-xs text-on-surface truncate flex items-center gap-1.5" title="${g.name}">
+                                <span>${g.name}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Badges -->
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                        ${isToday ? `
+                            <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-0.5 shadow-sm">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                TODAY
+                            </span>
+                        ` : ''}
+                        ${isActive ? `
+                            <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/30 text-violet-200 border border-violet-400/60 flex items-center gap-0.5">
+                                <span class="material-symbols-outlined text-[11px]">check_circle</span>
+                                Target
+                            </span>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Middle Row: Day, Time & Link Preview -->
+                <div class="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-outline-variant/15 text-[11px]">
+                    <!-- Day Pill (Kept in Arabic as requested) -->
+                    <span class="px-2 py-0.5 rounded-lg font-medium flex items-center gap-1
+                        ${isToday ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-surface-container-highest/80 text-on-surface-variant border border-outline-variant/20'}">
+                        <span class="material-symbols-outlined text-[12px]">calendar_today</span>
+                        <span>${dayDisplay}</span>
+                    </span>
+
+                    <!-- Time Pill -->
+                    <span class="px-2 py-0.5 rounded-lg font-mono font-medium flex items-center gap-1 bg-surface-container-highest/80 text-on-surface-variant border border-outline-variant/20">
+                        <span class="material-symbols-outlined text-[12px]">schedule</span>
+                        <span>${timeDisplay}</span>
+                    </span>
+
+                    <!-- Short Link Pill -->
+                    <span class="ml-auto text-[10px] font-mono text-on-surface-variant/70 truncate max-w-[120px]" title="${safeLink}">
+                        ${trimmedShortLink}
+                    </span>
+                </div>
+
+                <!-- Bottom Row: Action Buttons -->
+                <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-outline-variant/15">
+                    <button type="button"
+                        class="px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all
+                            ${isActive
+                                ? 'bg-violet-500 text-white shadow-sm'
+                                : 'bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/30'}">
+                        <span class="material-symbols-outlined text-[13px]">${isActive ? 'check' : 'touch_app'}</span>
+                        <span>${isActive ? 'Selected' : 'Set as Target'}</span>
+                    </button>
+
+                    <div class="flex items-center gap-1" onclick="event.stopPropagation()">
+                        <!-- Copy Link -->
+                        <button type="button"
+                            onclick="copyOnlineGroupLink(event, '${safeLink}')"
+                            class="p-1 rounded-lg bg-surface-container hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface border border-outline-variant/20 transition-all"
+                            title="Copy invite link">
+                            <span class="material-symbols-outlined text-[13px]">content_copy</span>
+                        </button>
+
+                        <!-- Open in WhatsApp -->
+                        <button type="button"
+                            onclick="event.stopPropagation(); window.open('${safeLink}', '_blank')"
+                            class="p-1 rounded-lg bg-surface-container hover:bg-surface-container-highest text-cyan-400 hover:text-cyan-300 border border-outline-variant/20 transition-all"
+                            title="Open group in WhatsApp">
+                            <span class="material-symbols-outlined text-[13px]">open_in_new</span>
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+    }).join('');
+}
+window.renderOnlineSheetList = renderOnlineSheetList;
+
+// ── Initialize on tab open or DOM ready ──
+function initOnlineSheet() {
+    const savedUrl = localStorage.getItem('online_sheet_url') || ONLINE_SHEET_DEFAULT_URL;
+    const input = document.getElementById('online-sheet-url-input');
+    if (input) input.value = savedUrl;
+
+    const openLink = document.getElementById('online-sheet-open-link');
+    if (openLink) openLink.href = savedUrl;
+
+    const todayAr = getTodayArabicName();
+    const todayLabel = document.getElementById('online-sheet-today-label');
+    if (todayLabel) todayLabel.textContent = todayAr;
+
+    fetchOnlineSheetGroups();
+}
+window.initOnlineSheet = initOnlineSheet;
+
+// Init immediately or on DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initOnlineSheet);
+} else {
+    initOnlineSheet();
 }

@@ -305,8 +305,17 @@ async function resolveTargetJid(phone) {
     return normalizePhoneNumber(input);
 }
 
+// Helper: Extract Spreadsheet ID from URL or return raw ID
+function extractSpreadsheetId(val) {
+    if (!val) return '';
+    const match = String(val).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return match ? match[1] : String(val).trim();
+}
+
 // Helper: Fetch Rows (Fast Public CSV first, Service Account fallback)
-async function fetchRowsAnyWay(spreadsheetId, range) {
+async function fetchRowsAnyWay(rawSpreadsheetId, range) {
+    const spreadsheetId = extractSpreadsheetId(rawSpreadsheetId);
+    if (!spreadsheetId) return [];
     try {
         const rows = await fetchPublicSheetCsv(spreadsheetId);
         if (rows && rows.length > 0) return rows;
@@ -616,6 +625,131 @@ app.post('/api/send-single-message', async (req, res) => {
     }
 });
 
+// REST Endpoint: Send Group Mention for Absent Members
+app.post('/api/send-group-mention', async (req, res) => {
+    const { groupTarget, message, absentList } = req.body;
+    if (!groupTarget || !message) {
+        return res.status(400).json({ error: 'Group link/target and message text are required.' });
+    }
+    if (wwebStatus !== 'ready') {
+        return res.status(400).json({ error: 'WhatsApp client is not connected. Scan QR code first.' });
+    }
+
+    try {
+        const groupJid = await resolveTargetJid(groupTarget);
+        if (!groupJid) {
+            return res.status(400).json({ error: 'Could not resolve WhatsApp group from link: ' + groupTarget });
+        }
+
+        let mentionTargets = [];
+        let groupParticipants = [];
+
+        try {
+            const chat = await wwebClient.getChatById(groupJid);
+            if (chat && Array.isArray(chat.participants)) {
+                groupParticipants = chat.participants;
+            }
+        } catch (chatErr) {
+            console.log('[Absent Mention] Could not fetch chat participants:', chatErr.message);
+        }
+
+        if (Array.isArray(absentList) && absentList.length > 0) {
+            for (const item of absentList) {
+                const rawPhone = String(item.phone || '').replace(/\D/g, '');
+                if (!rawPhone) continue;
+
+                // Normalize to Egyptian international number (20xxxxxxxxxx)
+                let intlPhone = rawPhone;
+                if (rawPhone.startsWith('01') && rawPhone.length === 11) {
+                    intlPhone = '20' + rawPhone.slice(1);
+                } else if (rawPhone.startsWith('1') && rawPhone.length === 10) {
+                    intlPhone = '20' + rawPhone;
+                }
+
+                // 1. Check if participant exists in groupParticipants
+                let matched = groupParticipants.find(p => {
+                    const pUser = (p.id && p.id.user) ? String(p.id.user).replace(/\D/g, '') : '';
+                    const pPhone = (p.phoneNumber && typeof p.phoneNumber === 'string') ? p.phoneNumber.replace(/\D/g, '') : '';
+                    return pUser === intlPhone || pUser.endsWith(intlPhone) || intlPhone.endsWith(pUser) ||
+                           pPhone === intlPhone || pPhone.endsWith(intlPhone) || intlPhone.endsWith(pPhone);
+                });
+
+                if (matched) {
+                    try {
+                        const contact = await wwebClient.getContactById(matched.id._serialized);
+                        if (contact) mentionTargets.push(contact);
+                        else mentionTargets.push(matched.id._serialized);
+                    } catch (e) {
+                        mentionTargets.push(matched.id._serialized);
+                    }
+                } else {
+                    // Try to resolve contact directly by intl phone JID
+                    const standardJid = `${intlPhone}@c.us`;
+                    try {
+                        const contact = await wwebClient.getContactById(standardJid);
+                        if (contact) mentionTargets.push(contact);
+                        else mentionTargets.push(standardJid);
+                    } catch (e) {
+                        mentionTargets.push(standardJid);
+                    }
+                }
+            }
+        }
+
+        const options = mentionTargets.length > 0 ? { mentions: mentionTargets } : {};
+        console.log(`[Absent Mention] Dispatching to group ${groupJid} with ${mentionTargets.length} mentions...`);
+        await wwebClient.sendMessage(groupJid, message, options);
+        console.log(`[Absent Mention] Successfully sent attendance mention report to group ${groupJid}`);
+        res.json({ success: true, count: mentionTargets.length, message: 'Mention message sent to WhatsApp group successfully!' });
+    } catch (err) {
+        console.error('Failed to send group mention:', err.message);
+        res.status(500).json({ error: 'Failed to send group mention: ' + err.message });
+    }
+});
+
+// REST Endpoint: Batch Update Attendance to Google Sheet
+app.post('/api/batch-update-attendance', async (req, res) => {
+    const { spreadsheetId, updates } = req.body;
+    if (!spreadsheetId || !Array.isArray(updates) || updates.length === 0) {
+        return res.status(400).json({ error: 'spreadsheetId and updates array are required.' });
+    }
+
+    try {
+        const sheets = getSheetsClient();
+        let sheetTitle = '';
+        try {
+            const meta = await sheets.spreadsheets.get({ spreadsheetId });
+            if (meta.data && meta.data.sheets && meta.data.sheets.length > 0) {
+                sheetTitle = meta.data.sheets[0].properties.title;
+            }
+        } catch (mErr) {
+            console.log('Sheet title fetch fallback:', mErr.message);
+        }
+
+        const data = updates.map(u => {
+            const r = parseInt(u.sheetRowIndex, 10);
+            const range = sheetTitle ? `'${sheetTitle}'!C${r}` : `C${r}`;
+            return {
+                range,
+                values: [[u.status || 'Attending']]
+            };
+        });
+
+        await sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+                valueInputOption: 'USER_ENTERED',
+                data
+            }
+        });
+
+        res.json({ success: true, count: updates.length });
+    } catch (err) {
+        console.error('Batch attendance update error:', err.message);
+        res.json({ success: true, warning: 'Updated locally. Sheet error: ' + err.message });
+    }
+});
+
 // REST Endpoint: Logout / Reset WhatsApp Session
 app.post('/api/logout-whatsapp', async (req, res) => {
     try {
@@ -912,7 +1046,91 @@ app.post('/api/send-custom-list', async (req, res) => {
     res.json({ success: true, job: currentJob });
 });
 
+// ──────────────────────────────────────────────
+// Online Sheet — Group Schedule Endpoints
+// Default Sheet: https://docs.google.com/spreadsheets/d/1Vo0FNrZCBDFsjpqaP5Sao2zCEQ2BIaQhyWsboR9PuSs
+// Columns: A=name  B=link  C=time  D=date (Arabic day name)
+// ──────────────────────────────────────────────
+const ONLINE_SHEET_ID = '1Vo0FNrZCBDFsjpqaP5Sao2zCEQ2BIaQhyWsboR9PuSs';
+
+// Fetch groups from Google Sheet (GET or POST)
+async function handleGetOnlineSheetGroups(req, res) {
+    try {
+        const rawId = req.query.sheetId || req.query.spreadsheetId || req.body?.sheetId || req.body?.spreadsheetId || ONLINE_SHEET_ID;
+        const sheetId = extractSpreadsheetId(rawId) || ONLINE_SHEET_ID;
+        const rows = await fetchRowsAnyWay(sheetId);
+        if (!rows || rows.length === 0) return res.json({ success: true, groups: [], sheetId });
+
+        // Detect and skip header row if first cell or second cell looks like a header
+        const firstCell = String(rows[0][0] || '').trim().toLowerCase();
+        const secondCell = String(rows[0][1] || '').trim().toLowerCase();
+        const hasHeader = ['name', 'اسم', 'group name', 'group', 'الاسم', 'اسم الجروب'].includes(firstCell) ||
+                          secondCell.includes('link') || secondCell.includes('لينك');
+        const startIdx = hasHeader ? 1 : 0;
+
+        const groups = rows.slice(startIdx)
+            .filter(row => row && (String(row[0] || '').trim() || String(row[1] || '').trim()))
+            .map((row, i) => ({
+                id: `row_${startIdx + i + 1}`,
+                rowIndex: startIdx + i + 1,
+                name: String(row[0] || '').trim() || `Group ${startIdx + i + 1}`,
+                link: String(row[1] || '').trim(),
+                time: String(row[2] || '').trim(),
+                date: String(row[3] || '').trim()  // Arabic day name e.g. الجمعة
+            }));
+
+        res.json({ success: true, groups, sheetId, total: groups.length });
+    } catch (err) {
+        console.error('[Online Sheet] Fetch error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch online sheet: ' + err.message });
+    }
+}
+
+app.get('/api/online-sheet/groups', handleGetOnlineSheetGroups);
+app.post('/api/online-sheet/groups', handleGetOnlineSheetGroups);
+
+// POST /api/online-sheet/add  — append a new group row to the sheet (optional)
+app.post('/api/online-sheet/add', async (req, res) => {
+    const { name, link, time, date } = req.body;
+    const rawSheetId = req.body.sheetId || req.body.spreadsheetId || ONLINE_SHEET_ID;
+    const sheetId = extractSpreadsheetId(rawSheetId) || ONLINE_SHEET_ID;
+
+    if (!name || !link) {
+        return res.status(400).json({ error: 'name and link are required.' });
+    }
+
+    try {
+        const sheets = getSheetsClient();
+
+        // Get sheet tab title
+        let sheetTitle = 'Sheet1';
+        try {
+            const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+            if (meta.data?.sheets?.[0]?.properties?.title) {
+                sheetTitle = meta.data.sheets[0].properties.title;
+            }
+        } catch (e) {
+            console.log('[Online Sheet] Could not get sheet title, using default:', e.message);
+        }
+
+        await sheets.spreadsheets.values.append({
+            spreadsheetId: sheetId,
+            range: `'${sheetTitle}'!A:D`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: { values: [[name, link, time || '', date || '']] }
+        });
+
+        res.json({ success: true, message: `Group "${name}" added to Online Sheet.` });
+    } catch (err) {
+        console.error('[Online Sheet] Write error:', err.message);
+        res.status(500).json({
+            error: 'Cannot write to sheet. Share it with the service account as Editor: ' + err.message
+        });
+    }
+});
+
 // Global Error Handler
+
 app.use((err, req, res, next) => {
     console.error('Unhandled express error:', err);
     res.status(500).json({ error: err.message || 'Server error occurred.' });
