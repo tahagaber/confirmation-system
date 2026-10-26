@@ -122,6 +122,18 @@ The server initializes the WhatsApp Web Puppeteer client and starts listening at
 - **Read:** Imports recipient name (Col A), phone (Col B), status (Col C), and comments (Col D) from the sheet.
 - **Write:** Every status change or comment typed in the dashboard is synced back to the Google Sheet in real-time via the Google Sheets API v4.
 - **Smart Range Resolution:** Automatically detects the active sheet tab name — no hardcoded `Sheet1` assumptions. Includes dual-layer retry fallback for maximum reliability.
+- **Batch Attendance Sync:** Supports bulk-updating attendance statuses across hundreds of rows in a single batch request.
+
+### 📅 Online Group Scheduling & Class Management
+- **Connected Schedule Sheet:** Syncs live with class/group schedules directly from Google Sheets (`A: Name`, `B: Link/JID`, `C: Time`, `D: Day/Date`).
+- **Smart Day Filter:** Real-time filtering by day of week (e.g., `الجمعة`, `السبت`, etc.) and instant group selection.
+- **Add New Groups:** Append new groups directly to the Google Sheet without leaving the dashboard.
+- **Dynamic Group Messaging:** Send broadcast announcements directly to groups using invite links or `@g.us` JIDs.
+
+### 👥 Attendance Manager & WhatsApp Absentee Mentions
+- **Interactive Attendance Modal:** Review attendees per group, filter by status, and toggle attendance (`Attending` / `Absent`).
+- **One-Click Sheet Sync:** Push all attendance updates back to Column C of the Google Sheet with one click.
+- **Smart WhatsApp Group Mentions (`@mention`):** Formats phone numbers into international format, queries WhatsApp group participants, resolves JIDs, and posts an alert message in the group tagging every absent member directly.
 
 ### 🧹 Dual Deduplication Engine
 - **Phone Deduplication** — Detects and skips repeated phone numbers.
@@ -137,6 +149,7 @@ The server initializes the WhatsApp Web Puppeteer client and starts listening at
 - **Configurable Safety Delay** — Default `8 seconds` between messages with random jitter (±2s) to simulate human behavior.
 - **Speed Mode Selector** — Choose from `Stealth`, `Normal`, `Fast`, or `Turbo` presets with visual feedback.
 - **Batch Range Slicing** — Process contacts in configurable sub-batches (e.g., #1–15, then #16–30) to minimize spam detection risk.
+- **Template Rotation** — Cycle through multiple message variants to prevent pattern detection by anti-spam filters.
 
 ### ✍️ Message Personalization
 - **Template Variables** — Use `{name}` in your message template for per-contact personalization.
@@ -223,6 +236,11 @@ The service account credentials file (`calls-502909-*.json`) is referenced autom
 | `POST` | `/api/preview-sheet` | Fetches and parses records from a Google Sheet |
 | `POST` | `/api/send-custom-list` | Starts a bulk messaging batch with provided contacts |
 | `POST` | `/api/send-single-message` | Sends a one-off test message to a single number |
+| `POST` | `/api/send-group-message` | Sends a message directly to a WhatsApp group via link or JID |
+| `POST` | `/api/send-group-mention` | Sends an announcement tagging/mentioning specific attendees (e.g. absent members) |
+| `POST` | `/api/batch-update-attendance` | Batch updates attendance status in Google Sheets (Col C) |
+| `GET` / `POST` | `/api/online-sheet/groups` | Fetches group schedule (Name, Link, Time, Day) from Google Sheet |
+| `POST` | `/api/online-sheet/add` | Appends a new group to the online schedule Google Sheet |
 | `POST` | `/api/update-sheet-record` | Syncs status & comment back to a Google Sheet row |
 | `POST` | `/api/logout-whatsapp` | Resets WhatsApp session and generates a new QR code |
 
