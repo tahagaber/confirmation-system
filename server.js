@@ -1193,7 +1193,8 @@ io.on('connection', async (socket) => {
 
 // Run Server
 server.listen(PORT, () => {
-    console.log(`\n======================================================`);
-    console.log(`🚀 System Taha: WhatsApp Sender is running on http://localhost:${PORT}`);
-    console.log(`======================================================\n`);
+    console.log(`\n${'='.repeat(54)}`);
+    console.log(`🚀 System Taha: WhatsApp Sender Pro`);
+    console.log(`   Dashboard: http://localhost:${PORT}`);
+    console.log(`${'='.repeat(54)}\n`);
 });
