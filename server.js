@@ -116,16 +116,41 @@ function createWhatsAppClient() {
         io.emit('whatsapp-status', { status: 'disconnected', error: msg });
     });
 
-    wwebClient.on('disconnected', (reason) => {
+    wwebClient.on('disconnected', async (reason) => {
         wwebStatus = 'disconnected';
         console.log('WhatsApp client disconnected:', reason);
         io.emit('whatsapp-status', { status: 'disconnected', reason });
+
+        // Auto-cleanup: remove stale lockfile left by Chromium/Puppeteer on hard disconnect
+        const lockfilePath = path.join(__dirname, '.wwebjs_auth', 'session', 'lockfile');
+        try {
+            if (fs.existsSync(lockfilePath)) {
+                fs.unlinkSync(lockfilePath);
+                console.log('System Taha: Stale lockfile removed after disconnect.');
+            }
+        } catch (lockErr) {
+            console.log('System Taha: Could not remove lockfile (non-critical):', lockErr.message);
+        }
     });
 
     wwebClient.initialize().catch(err => {
         console.error('Failed to initialize WhatsApp client:', err.message);
         wwebStatus = 'disconnected';
         io.emit('whatsapp-status', { status: 'disconnected', error: err.message });
+
+        // Auto-cleanup stale lockfile on init failure (EBUSY / EPERM errors)
+        if (err.message && (err.message.includes('EBUSY') || err.message.includes('lockfile') || err.message.includes('EPERM'))) {
+            const lockfilePath = path.join(__dirname, '.wwebjs_auth', 'session', 'lockfile');
+            try {
+                if (fs.existsSync(lockfilePath)) {
+                    fs.unlinkSync(lockfilePath);
+                    console.log('System Taha: Stale lockfile cleared on init failure.');
+                }
+            } catch (lockErr) {
+                console.log('System Taha: Lockfile cleanup warning:', lockErr.message);
+            }
+        }
+
         console.log('System Taha: Scheduling re-initialization in 5 seconds...');
         setTimeout(() => {
             if (wwebStatus === 'disconnected') {
