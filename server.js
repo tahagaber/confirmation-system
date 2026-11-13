@@ -1149,16 +1149,18 @@ app.post('/api/send-custom-list', async (req, res) => {
 
 // ──────────────────────────────────────────────
 // Online Sheet — Group Schedule Endpoints
-// Default Sheet: https://docs.google.com/spreadsheets/d/1Vo0FNrZCBDFsjpqaP5Sao2zCEQ2BIaQhyWsboR9PuSs
 // Columns: A=name  B=link  C=time  D=date (Arabic day name)
 // ──────────────────────────────────────────────
-const ONLINE_SHEET_ID = '1Vo0FNrZCBDFsjpqaP5Sao2zCEQ2BIaQhyWsboR9PuSs';
+const ONLINE_SHEET_ID = process.env.DEFAULT_SPREADSHEET_ID || '';
 
 // Fetch groups from Google Sheet (GET or POST)
 async function handleGetOnlineSheetGroups(req, res) {
     try {
         const rawId = req.query.sheetId || req.query.spreadsheetId || req.body?.sheetId || req.body?.spreadsheetId || ONLINE_SHEET_ID;
-        const sheetId = extractSpreadsheetId(rawId) || ONLINE_SHEET_ID;
+        const sheetId = extractSpreadsheetId(rawId);
+        if (!sheetId) {
+            return res.status(400).json({ error: 'Please enter a valid Google Sheet link or ID.' });
+        }
         const rows = await fetchRowsAnyWay(sheetId);
         if (!rows || rows.length === 0) return res.json({ success: true, groups: [], sheetId });
 

@@ -3091,11 +3091,15 @@ function renderAbsentTabList() {
     const activeAbsentListCountEl = document.getElementById('active-absent-list-count');
     const presentCountEl = document.getElementById('present-tab-count');
     const accordionPresentCountEl = document.getElementById('accordion-present-count');
+    const privateTabBadge = document.getElementById('private-tab-badge');
+    const privatePill = document.getElementById('private-absent-recipient-pill');
 
     if (absentCountEl) absentCountEl.textContent = absentList.length;
     if (activeAbsentListCountEl) activeAbsentListCountEl.textContent = absentList.length;
     if (presentCountEl) presentCountEl.textContent = presentList.length;
     if (accordionPresentCountEl) accordionPresentCountEl.textContent = presentList.length;
+    if (privateTabBadge) privateTabBadge.textContent = absentList.length;
+    if (privatePill) privatePill.textContent = `${absentList.length} Absent`;
 
     // Render Active Absent Container
     if (absentContainer) {
@@ -3612,13 +3616,55 @@ function refreshAbsentTabData() {
 }
 window.refreshAbsentTabData = refreshAbsentTabData;
 
+// Switch between Group Mention and Private Messages action panels
+function switchAbsentActionTab(mode) {
+    const btnGroup = document.getElementById('btn-absent-mode-group');
+    const btnPrivate = document.getElementById('btn-absent-mode-private');
+    const panelGroup = document.getElementById('panel-group-mention');
+    const panelPrivate = document.getElementById('panel-private-messages');
+
+    if (mode === 'private') {
+        if (btnGroup) {
+            btnGroup.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 text-on-surface-variant hover:text-emerald-300 hover:bg-surface-container cursor-pointer';
+        }
+        if (btnPrivate) {
+            btnPrivate.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-md cursor-pointer';
+        }
+        if (panelGroup) panelGroup.classList.add('hidden');
+        if (panelPrivate) panelPrivate.classList.remove('hidden');
+    } else {
+        if (btnGroup) {
+            btnGroup.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-on-primary shadow-md cursor-pointer';
+        }
+        if (btnPrivate) {
+            btnPrivate.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 text-on-surface-variant hover:text-rose-300 hover:bg-surface-container cursor-pointer';
+        }
+        if (panelGroup) panelGroup.classList.remove('hidden');
+        if (panelPrivate) panelPrivate.classList.add('hidden');
+    }
+}
+window.switchAbsentActionTab = switchAbsentActionTab;
+
+// Helper: Insert variable tag into private message textarea
+function insertPrivateTag(tag) {
+    const textarea = document.getElementById('private-absent-message-input');
+    if (!textarea) return;
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const text = textarea.value;
+    textarea.value = text.substring(0, start) + tag + text.substring(end);
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+}
+window.insertPrivateTag = insertPrivateTag;
+
 
 // ==========================================
 // Online Sheet — Group Schedule Feature
 // Backed by Google Sheets API
 // ==========================================
 
-const ONLINE_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1Vo0FNrZCBDFsjpqaP5Sao2zCEQ2BIaQhyWsboR9PuSs/edit?usp=sharing';
+const ONLINE_SHEET_DEFAULT_URL = '';
 
 // Arabic day names — matching what's written in column D
 const DAY_NAMES    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -3653,20 +3699,34 @@ function getOnlineSheetUrl() {
     if (input && input.value.trim()) {
         return input.value.trim();
     }
-    return localStorage.getItem('online_sheet_url') || ONLINE_SHEET_DEFAULT_URL;
+    return localStorage.getItem('online_sheet_url') || '';
 }
 
 // ── On URL input change ──
 function onOnlineSheetUrlChange() {
     const input = document.getElementById('online-sheet-url-input');
     if (!input) return;
-    const url = input.value.trim() || ONLINE_SHEET_DEFAULT_URL;
-    localStorage.setItem('online_sheet_url', url);
+    const url = input.value.trim();
+    if (url) {
+        localStorage.setItem('online_sheet_url', url);
+    } else {
+        localStorage.removeItem('online_sheet_url');
+    }
 
     const openLink = document.getElementById('online-sheet-open-link');
-    if (openLink) openLink.href = url;
+    if (openLink) {
+        openLink.href = url || '#';
+        openLink.style.pointerEvents = url ? 'auto' : 'none';
+        openLink.style.opacity = url ? '1' : '0.4';
+    }
 
-    fetchOnlineSheetGroups();
+    if (url) {
+        fetchOnlineSheetGroups();
+    } else {
+        _onlineSheetGroups = [];
+        updateOnlineSheetCounts();
+        applyOnlineSheetFilters();
+    }
 }
 window.onOnlineSheetUrlChange = onOnlineSheetUrlChange;
 
@@ -3678,9 +3738,24 @@ async function fetchOnlineSheetGroups() {
 
     // Update input and link if needed
     const input = document.getElementById('online-sheet-url-input');
-    if (input && input.value !== url) input.value = url;
+    if (input && url && input.value !== url) input.value = url;
     const openLink = document.getElementById('online-sheet-open-link');
-    if (openLink) openLink.href = url;
+    if (openLink) {
+        openLink.href = url || '#';
+        openLink.style.pointerEvents = url ? 'auto' : 'none';
+        openLink.style.opacity = url ? '1' : '0.4';
+    }
+
+    if (!url) {
+        if (container) {
+            container.innerHTML = `
+                <div class="col-span-full flex flex-col items-center justify-center gap-2 py-8 text-xs text-on-surface-variant opacity-70">
+                    <span class="material-symbols-outlined text-[24px] text-violet-400 opacity-60">link</span>
+                    <span>Please paste your Google Sheet link above and click "Load Groups"</span>
+                </div>`;
+        }
+        return;
+    }
 
     // Loading UI
     if (container) {
@@ -4047,13 +4122,28 @@ function initOnlineSheet() {
     if (input) input.value = savedUrl;
 
     const openLink = document.getElementById('online-sheet-open-link');
-    if (openLink) openLink.href = savedUrl;
+    if (openLink) {
+        openLink.href = savedUrl || '#';
+        openLink.style.pointerEvents = savedUrl ? 'auto' : 'none';
+        openLink.style.opacity = savedUrl ? '1' : '0.4';
+    }
 
     const todayAr = getTodayArabicName();
     const todayLabel = document.getElementById('online-sheet-today-label');
     if (todayLabel) todayLabel.textContent = todayAr;
 
-    fetchOnlineSheetGroups();
+    if (savedUrl) {
+        fetchOnlineSheetGroups();
+    } else {
+        const container = document.getElementById('online-sheet-list');
+        if (container) {
+            container.innerHTML = `
+                <div class="col-span-full flex flex-col items-center justify-center gap-2 py-8 text-xs text-on-surface-variant opacity-70">
+                    <span class="material-symbols-outlined text-[24px] text-violet-400 opacity-60">link</span>
+                    <span>Paste your Google Sheet link above and click "Load Groups" to display class schedules</span>
+                </div>`;
+        }
+    }
 }
 window.initOnlineSheet = initOnlineSheet;
 
