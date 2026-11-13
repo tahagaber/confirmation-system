@@ -1410,17 +1410,41 @@
                                 </div>
                             </div>
 
-                            <!-- Progress Bar (hidden by default) -->
-                            <div id="private-absent-progress-wrap" class="hidden p-3 bg-surface-container/60 border border-rose-500/30 rounded-2xl space-y-2">
-                                <div class="flex items-center justify-between text-[11px] font-mono">
-                                    <span id="private-absent-progress-label" class="text-rose-300 font-bold flex items-center gap-1">
-                                        <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
-                                        <span>Sending...</span>
-                                    </span>
-                                    <span id="private-absent-progress-count" class="text-on-surface-variant font-bold">0 / 0</span>
+                            <!-- High-Tech Dispatch Controls & Live Countdown Timer (Confirmation System Style) -->
+                            <div id="private-absent-progress-wrap" class="hidden bg-surface-container-low border border-rose-500/40 p-4 rounded-2xl shadow-lg relative overflow-hidden space-y-3">
+                                <!-- Row 1: Countdown Clock + Batch Status -->
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <div class="text-[10px] font-bold text-rose-300/80 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                                            <span class="material-symbols-outlined text-[14px] text-rose-400">schedule</span>
+                                            <span>Next Dispatch In</span>
+                                        </div>
+                                        <div class="font-mono text-3xl font-black text-rose-400 tracking-tight" id="private-absent-countdown-timer">00:00s</div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-[10px] font-bold text-on-surface-variant mb-0.5 uppercase tracking-wider">Batch Progress</div>
+                                        <div class="font-mono text-base font-bold text-on-surface" id="private-absent-progress-count">0 / 0</div>
+                                        <span class="text-[10px] text-rose-300 font-mono font-bold" id="private-absent-progress-pct">0%</span>
+                                    </div>
                                 </div>
+
+                                <!-- Row 2: Status Label (Who is being messaged / result) -->
+                                <div class="flex items-center justify-between text-xs border-t border-outline-variant/20 pt-2 font-mono">
+                                    <div class="flex items-center gap-1.5 truncate max-w-[240px]">
+                                        <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse flex-shrink-0"></span>
+                                        <span id="private-absent-progress-label" class="text-rose-200 truncate">Preparing dispatch...</span>
+                                    </div>
+                                    <span class="text-[10px] text-amber-300 font-mono flex-shrink-0" id="private-absent-delay-pattern">Anti-Ban Pacing</span>
+                                </div>
+
+                                <!-- Row 3: Overall Progress Bar -->
                                 <div class="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                                    <div id="private-absent-progress-bar" class="h-full bg-gradient-to-r from-rose-500 via-pink-500 to-amber-400 rounded-full transition-all duration-500" style="width:0%"></div>
+                                    <div id="private-absent-progress-bar" class="h-full bg-gradient-to-r from-rose-500 via-pink-500 to-emerald-400 rounded-full transition-all duration-500" style="width:0%"></div>
+                                </div>
+
+                                <!-- Bottom Ticking Delay Bar (Countdown Tick) -->
+                                <div class="absolute bottom-0 left-0 right-0 h-1 bg-surface-container">
+                                    <div class="h-full bg-rose-400 transition-all duration-1000 ease-linear" id="private-absent-delay-tick" style="width: 0%;"></div>
                                 </div>
                             </div>
 
@@ -1440,6 +1464,7 @@
                         </div>
                     </div>
                 </div>
+            </div>
 
             <!-- PAGE VIEW 3: WHATSAPP AUTH -->
             <div id="view-whatsapp-auth" class="page-view hidden space-y-6">

@@ -3592,6 +3592,36 @@ async function cancelPrivateAbsentMessages() {
 }
 window.cancelPrivateAbsentMessages = cancelPrivateAbsentMessages;
 
+// Live Countdown Ticker for Private Absent Messages (Confirmation System Style)
+let privateAbsentCountdownInterval = null;
+
+function startPrivateAbsentCountdown(seconds, name) {
+    if (privateAbsentCountdownInterval) clearInterval(privateAbsentCountdownInterval);
+    let remaining = seconds;
+    const timerEl = document.getElementById('private-absent-countdown-timer');
+    const tickEl = document.getElementById('private-absent-delay-tick');
+    const patternEl = document.getElementById('private-absent-delay-pattern');
+    const labelEl = document.getElementById('private-absent-progress-label');
+
+    if (timerEl) timerEl.textContent = `00:${remaining < 10 ? '0' + remaining : remaining}s`;
+    if (patternEl) patternEl.textContent = `Anti-Ban Delay (${seconds}s)`;
+    if (labelEl && name) labelEl.textContent = `Waiting for next contact...`;
+
+    privateAbsentCountdownInterval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+            clearInterval(privateAbsentCountdownInterval);
+            privateAbsentCountdownInterval = null;
+            if (timerEl) timerEl.textContent = '00:00s';
+            if (tickEl) tickEl.style.width = '100%';
+        } else {
+            if (timerEl) timerEl.textContent = `00:${remaining < 10 ? '0' + remaining : remaining}s`;
+            const pct = Math.round(((seconds - remaining) / seconds) * 100);
+            if (tickEl) tickEl.style.width = `${pct}%`;
+        }
+    }, 1000);
+}
+
 // ── Handle live progress updates for private absent messages ──
 socket.on('private-absent-progress', (data) => {
     const progressWrap = document.getElementById('private-absent-progress-wrap');
@@ -3601,26 +3631,38 @@ socket.on('private-absent-progress', (data) => {
     const btn = document.getElementById('btn-send-private-absent');
     const cancelBtn = document.getElementById('btn-cancel-private-absent');
     const statusDot = document.getElementById('private-absent-status-dot');
+    const timerEl = document.getElementById('private-absent-countdown-timer');
+    const tickEl = document.getElementById('private-absent-delay-tick');
+    const pctEl = document.getElementById('private-absent-progress-pct');
 
     const pct = data.total > 0 ? Math.round(((data.index + 1) / data.total) * 100) : 0;
     if (progressBar) progressBar.style.width = `${Math.min(pct, 100)}%`;
-    if (progressCount) progressCount.textContent = `${data.index + 1} / ${data.total}`;
+    if (progressCount) progressCount.textContent = `${Math.min(data.index + 1, data.total)} / ${data.total}`;
+    if (pctEl) pctEl.textContent = `${Math.min(pct, 100)}%`;
 
     if (data.status === 'sent') {
+        if (privateAbsentCountdownInterval) clearInterval(privateAbsentCountdownInterval);
+        if (timerEl) timerEl.textContent = '00:00s';
         if (progressLabel) progressLabel.textContent = `✅ Sent to ${data.name}`;
         addLog(`✅ [Private] Sent to ${data.name}`, 'success');
     } else if (data.status === 'no_whatsapp') {
+        if (privateAbsentCountdownInterval) clearInterval(privateAbsentCountdownInterval);
+        if (timerEl) timerEl.textContent = '00:00s';
         if (progressLabel) progressLabel.textContent = `⚠️ No WhatsApp: ${data.name}`;
         addLog(`⚠️ [Private] ${data.name}: No WhatsApp account`, 'warning');
     } else if (data.status === 'failed') {
+        if (privateAbsentCountdownInterval) clearInterval(privateAbsentCountdownInterval);
+        if (timerEl) timerEl.textContent = '00:00s';
         if (progressLabel) progressLabel.textContent = `❌ Failed: ${data.name}`;
         addLog(`❌ [Private] Failed to send to ${data.name}: ${data.error || ''}`, 'error');
     } else if (data.status === 'delay') {
-        if (progressLabel) progressLabel.textContent = `⏳ Waiting ${data.delaySec}s before next message...`;
+        startPrivateAbsentCountdown(data.delaySec, data.name);
     } else if (data.status === 'skipped') {
         if (progressLabel) progressLabel.textContent = `⏭️ Skipped (invalid phone): ${data.name}`;
         addLog(`⏭️ [Private] Skipped ${data.name}: invalid phone`, 'warning');
     } else if (data.status === 'cancelled') {
+        if (privateAbsentCountdownInterval) clearInterval(privateAbsentCountdownInterval);
+        if (timerEl) timerEl.textContent = '00:00s';
         if (progressLabel) progressLabel.textContent = `⏹️ Cancelled. Sent: ${data.sent} | Failed: ${data.failed}`;
         if (btn) { btn.disabled = false; btn.style.display = 'flex'; }
         if (cancelBtn) { cancelBtn.classList.add('hidden'); cancelBtn.disabled = false; cancelBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">stop_circle</span><span>Stop Sending</span>`; }
@@ -3628,7 +3670,11 @@ socket.on('private-absent-progress', (data) => {
         addLog(`⏹️ Private messaging stopped by user. Sent: ${data.sent}, Failed: ${data.failed}`, 'warning');
         showToast(`Private messaging stopped. (Sent: ${data.sent})`, 'info');
     } else if (data.status === 'complete') {
+        if (privateAbsentCountdownInterval) clearInterval(privateAbsentCountdownInterval);
+        if (timerEl) timerEl.textContent = '00:00s';
+        if (tickEl) tickEl.style.width = '100%';
         if (progressBar) progressBar.style.width = '100%';
+        if (pctEl) pctEl.textContent = '100%';
         if (progressLabel) progressLabel.textContent = `✅ Done! Sent: ${data.sent} | Failed: ${data.failed}`;
         if (progressCount) progressCount.textContent = `${data.total} / ${data.total}`;
         if (btn) { btn.disabled = false; btn.style.display = 'flex'; }
