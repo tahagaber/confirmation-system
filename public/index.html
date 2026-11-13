@@ -1335,6 +1335,67 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- ✉️ PRIVATE MESSAGES CARD — Send individual WhatsApp to each absent member -->
+                    <div class="bg-surface-container-low border border-rose-500/30 p-5 rounded-2xl shadow-sm space-y-3 bg-gradient-to-r from-rose-950/20 via-surface-container-low to-surface-container-low">
+                        <!-- Header -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-rose-400 text-[20px]">person_pin</span>
+                                <div>
+                                    <div class="text-xs font-black text-rose-300 uppercase tracking-wider">Send Private Messages to Absent</div>
+                                    <div class="text-[10px] text-on-surface-variant">Send a personal WhatsApp message to each absent member individually — with delay</div>
+                                </div>
+                            </div>
+                            <!-- Status Dot -->
+                            <span id="private-absent-status-dot" class="hidden w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
+                        </div>
+
+                        <!-- Message Template -->
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-rose-300/80 uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="material-symbols-outlined text-[14px]">edit_note</span>
+                                <span>Message Template</span>
+                                <span class="text-[9px] font-mono text-on-surface-variant px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/30">{name}</span>
+                            </label>
+                            <textarea id="private-absent-message-input" rows="3"
+                                placeholder="e.g. مرحباً {name}، لاحظنا غيابك اليوم. نتمنى أن تكون بخير 🙏"
+                                class="w-full bg-surface-container border border-rose-500/40 px-3 py-2 rounded-xl text-xs text-on-surface focus:border-rose-400 focus:ring-1 focus:ring-rose-400/50 outline-none transition-all resize-none placeholder:text-on-surface-variant/40 font-mono leading-relaxed"></textarea>
+                            <p class="text-[10px] text-on-surface-variant">Use <code class="bg-surface-container px-1 rounded">{name}</code> for student name, <code class="bg-surface-container px-1 rounded">{date}</code> for today's date.</p>
+                        </div>
+
+                        <!-- Delay Settings -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Min Delay (sec)</label>
+                                <input type="number" id="private-absent-min-delay" value="8" min="3" max="60"
+                                    class="w-full bg-surface-container border border-outline-variant/40 px-3 py-1.5 rounded-xl text-xs text-on-surface outline-none font-mono text-center" />
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Max Delay (sec)</label>
+                                <input type="number" id="private-absent-max-delay" value="16" min="3" max="60"
+                                    class="w-full bg-surface-container border border-outline-variant/40 px-3 py-1.5 rounded-xl text-xs text-on-surface outline-none font-mono text-center" />
+                            </div>
+                        </div>
+
+                        <!-- Progress Bar (hidden by default) -->
+                        <div id="private-absent-progress-wrap" class="hidden space-y-1.5">
+                            <div class="flex items-center justify-between text-[10px] font-mono text-on-surface-variant">
+                                <span id="private-absent-progress-label">Sending...</span>
+                                <span id="private-absent-progress-count">0 / 0</span>
+                            </div>
+                            <div class="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+                                <div id="private-absent-progress-bar" class="h-full bg-gradient-to-r from-rose-500 to-pink-400 rounded-full transition-all duration-500" style="width:0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Send Button -->
+                        <button type="button" id="btn-send-private-absent" onclick="sendPrivateMessagesToAbsent()"
+                            class="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 hover:brightness-110 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-rose-500/20 transition-all cursor-pointer">
+                            <span class="material-symbols-outlined text-[18px]">send</span>
+                            <span>Send Private Messages Now</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 

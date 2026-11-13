@@ -3511,6 +3511,97 @@ async function sendAbsentTabMentionDirect() {
 }
 window.sendAbsentTabMentionDirect = sendAbsentTabMentionDirect;
 
+// ── Send Private WhatsApp Messages to each absent member individually ──
+async function sendPrivateMessagesToAbsent() {
+    const absentList = absentTabAllRecords.filter(r => !absentTabAttendingSet.has(getRecordKey(r)));
+    const templateInput = document.getElementById('private-absent-message-input');
+    const messageTemplate = templateInput ? templateInput.value.trim() : '';
+    const minDelaySec = parseInt(document.getElementById('private-absent-min-delay')?.value || '8', 10);
+    const maxDelaySec = parseInt(document.getElementById('private-absent-max-delay')?.value || '16', 10);
+
+    if (!messageTemplate) {
+        showToast('Please write a message template first.', 'warning');
+        if (templateInput) templateInput.focus();
+        return;
+    }
+    if (absentList.length === 0) {
+        showToast('No absent members to message. All members are marked Present!', 'info');
+        return;
+    }
+
+    const btn = document.getElementById('btn-send-private-absent');
+    const progressWrap = document.getElementById('private-absent-progress-wrap');
+    const progressBar = document.getElementById('private-absent-progress-bar');
+    const progressLabel = document.getElementById('private-absent-progress-label');
+    const progressCount = document.getElementById('private-absent-progress-count');
+    const statusDot = document.getElementById('private-absent-status-dot');
+
+    if (btn) { btn.disabled = true; btn.innerHTML = `<span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span><span>Sending Private Messages...</span>`; }
+    if (progressWrap) progressWrap.classList.remove('hidden');
+    if (statusDot) statusDot.classList.remove('hidden');
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressLabel) progressLabel.textContent = 'Starting...';
+    if (progressCount) progressCount.textContent = `0 / ${absentList.length}`;
+
+    addLog(`📩 Starting private messages to ${absentList.length} absent members (delay: ${minDelaySec}–${maxDelaySec}s)...`, 'system');
+
+    try {
+        const response = await fetch(`${socketServerUrl}/api/send-private-absent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ absentList, messageTemplate, minDelaySec, maxDelaySec })
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || 'Failed to start private messaging.');
+        addLog(`✅ ${data.message}`, 'success');
+        showToast(data.message, 'success');
+    } catch (err) {
+        addLog(`❌ Private message error: ${err.message}`, 'error');
+        showToast(`Error: ${err.message}`, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = `<span class="material-symbols-outlined text-[18px]">send</span><span>Send Private Messages Now</span>`; }
+        if (statusDot) statusDot.classList.add('hidden');
+    }
+}
+window.sendPrivateMessagesToAbsent = sendPrivateMessagesToAbsent;
+
+// ── Handle live progress updates for private absent messages ──
+socket.on('private-absent-progress', (data) => {
+    const progressWrap = document.getElementById('private-absent-progress-wrap');
+    const progressBar = document.getElementById('private-absent-progress-bar');
+    const progressLabel = document.getElementById('private-absent-progress-label');
+    const progressCount = document.getElementById('private-absent-progress-count');
+    const btn = document.getElementById('btn-send-private-absent');
+    const statusDot = document.getElementById('private-absent-status-dot');
+
+    const pct = data.total > 0 ? Math.round(((data.index + 1) / data.total) * 100) : 0;
+    if (progressBar) progressBar.style.width = `${Math.min(pct, 100)}%`;
+    if (progressCount) progressCount.textContent = `${data.index + 1} / ${data.total}`;
+
+    if (data.status === 'sent') {
+        if (progressLabel) progressLabel.textContent = `✅ Sent to ${data.name}`;
+        addLog(`✅ [Private] Sent to ${data.name}`, 'success');
+    } else if (data.status === 'no_whatsapp') {
+        if (progressLabel) progressLabel.textContent = `⚠️ No WhatsApp: ${data.name}`;
+        addLog(`⚠️ [Private] ${data.name}: No WhatsApp account`, 'warning');
+    } else if (data.status === 'failed') {
+        if (progressLabel) progressLabel.textContent = `❌ Failed: ${data.name}`;
+        addLog(`❌ [Private] Failed to send to ${data.name}: ${data.error || ''}`, 'error');
+    } else if (data.status === 'delay') {
+        if (progressLabel) progressLabel.textContent = `⏳ Waiting ${data.delaySec}s before next message...`;
+    } else if (data.status === 'skipped') {
+        if (progressLabel) progressLabel.textContent = `⏭️ Skipped (invalid phone): ${data.name}`;
+        addLog(`⏭️ [Private] Skipped ${data.name}: invalid phone`, 'warning');
+    } else if (data.status === 'complete') {
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressLabel) progressLabel.textContent = `✅ Done! Sent: ${data.sent} | Failed: ${data.failed}`;
+        if (progressCount) progressCount.textContent = `${data.total} / ${data.total}`;
+        if (btn) { btn.disabled = false; btn.innerHTML = `<span class="material-symbols-outlined text-[18px]">send</span><span>Send Private Messages Now</span>`; }
+        if (statusDot) statusDot.classList.add('hidden');
+        addLog(`✅ Private messaging complete — Sent: ${data.sent}, Failed: ${data.failed}`, 'success');
+        showToast(`Private messages done! Sent: ${data.sent}, Failed: ${data.failed}`, 'success');
+    }
+});
+
 // Refresh Data from Sheet
 function refreshAbsentTabData() {
     absentTabInitialized = false;

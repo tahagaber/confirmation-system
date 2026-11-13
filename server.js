@@ -732,6 +732,82 @@ app.post('/api/send-group-mention', async (req, res) => {
     }
 });
 
+// REST Endpoint: Send Private Messages to Absent List (with delay)
+app.post('/api/send-private-absent', async (req, res) => {
+    const { absentList, messageTemplate, minDelaySec, maxDelaySec } = req.body;
+    if (!absentList || !Array.isArray(absentList) || absentList.length === 0) {
+        return res.status(400).json({ error: 'absentList is required and must be a non-empty array.' });
+    }
+    if (!messageTemplate) {
+        return res.status(400).json({ error: 'messageTemplate is required.' });
+    }
+    if (wwebStatus !== 'ready') {
+        return res.status(400).json({ error: 'WhatsApp client is not connected. Scan QR code first.' });
+    }
+
+    const minD = Math.max(3, Number(minDelaySec) || 8);
+    const maxD = Math.max(minD, Number(maxDelaySec) || 16);
+
+    // Run in background — respond immediately so UI doesn't hang
+    res.json({ success: true, message: `Private messaging started for ${absentList.length} absent members. Check the system log for live progress.` });
+
+    // Background async loop
+    (async () => {
+        let sent = 0, failed = 0;
+        for (let i = 0; i < absentList.length; i++) {
+            const person = absentList[i];
+            const wwebJid = normalizePhoneNumber(person.phone);
+            if (!wwebJid) {
+                console.log(`[Private Absent] Skipping ${person.name}: invalid phone.`);
+                io.emit('private-absent-progress', { index: i, total: absentList.length, name: person.name, status: 'skipped', sent, failed });
+                continue;
+            }
+
+            // Personalize message
+            let msg = parseSpintax(messageTemplate);
+            msg = msg.replace(/{name}/gi, person.name || 'Student');
+            msg = msg.replace(/{phone}/gi, person.phone || '');
+            msg = msg.replace(/{date}/gi, new Date().toLocaleDateString('en-US'));
+            msg = msg.replace(/{time}/gi, new Date().toLocaleTimeString('en-US'));
+
+            try {
+                // Check registration
+                let isReg = true;
+                try {
+                    if (typeof wwebClient.isRegisteredUser === 'function') {
+                        isReg = await wwebClient.isRegisteredUser(wwebJid);
+                    }
+                } catch (_) {}
+
+                if (!isReg) {
+                    console.log(`[Private Absent] ${person.name}: No WhatsApp account.`);
+                    failed++;
+                    io.emit('private-absent-progress', { index: i, total: absentList.length, name: person.name, status: 'no_whatsapp', sent, failed });
+                } else {
+                    await wwebClient.sendMessage(wwebJid, msg);
+                    sent++;
+                    console.log(`[Private Absent] ✅ Sent to ${person.name} (${person.phone})`);
+                    io.emit('private-absent-progress', { index: i, total: absentList.length, name: person.name, status: 'sent', sent, failed });
+                }
+            } catch (err) {
+                failed++;
+                console.error(`[Private Absent] ❌ Failed ${person.name}: ${err.message}`);
+                io.emit('private-absent-progress', { index: i, total: absentList.length, name: person.name, status: 'failed', error: err.message, sent, failed });
+            }
+
+            // Delay between messages (skip after last)
+            if (i < absentList.length - 1) {
+                const delaySec = Math.floor(Math.random() * (maxD - minD + 1)) + minD;
+                console.log(`[Private Absent] Waiting ${delaySec}s before next message...`);
+                io.emit('private-absent-progress', { index: i, total: absentList.length, name: person.name, status: 'delay', delaySec, sent, failed });
+                await new Promise(resolve => setTimeout(resolve, delaySec * 1000));
+            }
+        }
+        console.log(`[Private Absent] Done. Sent: ${sent}, Failed: ${failed}`);
+        io.emit('private-absent-progress', { index: absentList.length, total: absentList.length, status: 'complete', sent, failed });
+    })();
+});
+
 // REST Endpoint: Batch Update Attendance to Google Sheet
 app.post('/api/batch-update-attendance', async (req, res) => {
     const { spreadsheetId, updates } = req.body;
