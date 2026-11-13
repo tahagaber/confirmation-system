@@ -3534,17 +3534,19 @@ async function sendPrivateMessagesToAbsent() {
     }
 
     const btn = document.getElementById('btn-send-private-absent');
+    const cancelBtn = document.getElementById('btn-cancel-private-absent');
     const progressWrap = document.getElementById('private-absent-progress-wrap');
     const progressBar = document.getElementById('private-absent-progress-bar');
     const progressLabel = document.getElementById('private-absent-progress-label');
     const progressCount = document.getElementById('private-absent-progress-count');
     const statusDot = document.getElementById('private-absent-status-dot');
 
-    if (btn) { btn.disabled = true; btn.innerHTML = `<span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span><span>Sending Private Messages...</span>`; }
+    if (btn) { btn.disabled = true; btn.style.display = 'none'; }
+    if (cancelBtn) { cancelBtn.classList.remove('hidden'); }
     if (progressWrap) progressWrap.classList.remove('hidden');
     if (statusDot) statusDot.classList.remove('hidden');
     if (progressBar) progressBar.style.width = '0%';
-    if (progressLabel) progressLabel.textContent = 'Starting...';
+    if (progressLabel) progressLabel.textContent = 'Connecting to server...';
     if (progressCount) progressCount.textContent = `0 / ${absentList.length}`;
 
     addLog(`📩 Starting private messages to ${absentList.length} absent members (delay: ${minDelaySec}–${maxDelaySec}s)...`, 'system');
@@ -3555,18 +3557,40 @@ async function sendPrivateMessagesToAbsent() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ absentList, messageTemplate, minDelaySec, maxDelaySec })
         });
+
+        if (response.status === 404) {
+            throw new Error('Please restart the server terminal: Press Ctrl+C in terminal and run "npm start" to load the new private messaging update.');
+        }
+
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || 'Failed to start private messaging.');
         addLog(`✅ ${data.message}`, 'success');
         showToast(data.message, 'success');
+        if (progressLabel) progressLabel.textContent = 'Preparing queue...';
     } catch (err) {
         addLog(`❌ Private message error: ${err.message}`, 'error');
         showToast(`Error: ${err.message}`, 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = `<span class="material-symbols-outlined text-[18px]">send</span><span>Send Private Messages Now</span>`; }
+        if (btn) { btn.disabled = false; btn.style.display = 'flex'; }
+        if (cancelBtn) { cancelBtn.classList.add('hidden'); }
         if (statusDot) statusDot.classList.add('hidden');
+        if (progressLabel) progressLabel.textContent = `Error: ${err.message}`;
     }
 }
 window.sendPrivateMessagesToAbsent = sendPrivateMessagesToAbsent;
+
+// Cancel Private Messages
+async function cancelPrivateAbsentMessages() {
+    const cancelBtn = document.getElementById('btn-cancel-private-absent');
+    if (cancelBtn) { cancelBtn.disabled = true; cancelBtn.textContent = 'Stopping...'; }
+    addLog('Requesting stop for private messaging...', 'warning');
+    try {
+        await fetch(`${socketServerUrl}/api/cancel-private-absent`, { method: 'POST' });
+        showToast('Private messaging stop requested.', 'info');
+    } catch (e) {
+        console.error('Cancel request error:', e);
+    }
+}
+window.cancelPrivateAbsentMessages = cancelPrivateAbsentMessages;
 
 // ── Handle live progress updates for private absent messages ──
 socket.on('private-absent-progress', (data) => {
@@ -3575,6 +3599,7 @@ socket.on('private-absent-progress', (data) => {
     const progressLabel = document.getElementById('private-absent-progress-label');
     const progressCount = document.getElementById('private-absent-progress-count');
     const btn = document.getElementById('btn-send-private-absent');
+    const cancelBtn = document.getElementById('btn-cancel-private-absent');
     const statusDot = document.getElementById('private-absent-status-dot');
 
     const pct = data.total > 0 ? Math.round(((data.index + 1) / data.total) * 100) : 0;
@@ -3595,11 +3620,19 @@ socket.on('private-absent-progress', (data) => {
     } else if (data.status === 'skipped') {
         if (progressLabel) progressLabel.textContent = `⏭️ Skipped (invalid phone): ${data.name}`;
         addLog(`⏭️ [Private] Skipped ${data.name}: invalid phone`, 'warning');
+    } else if (data.status === 'cancelled') {
+        if (progressLabel) progressLabel.textContent = `⏹️ Cancelled. Sent: ${data.sent} | Failed: ${data.failed}`;
+        if (btn) { btn.disabled = false; btn.style.display = 'flex'; }
+        if (cancelBtn) { cancelBtn.classList.add('hidden'); cancelBtn.disabled = false; cancelBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">stop_circle</span><span>Stop Sending</span>`; }
+        if (statusDot) statusDot.classList.add('hidden');
+        addLog(`⏹️ Private messaging stopped by user. Sent: ${data.sent}, Failed: ${data.failed}`, 'warning');
+        showToast(`Private messaging stopped. (Sent: ${data.sent})`, 'info');
     } else if (data.status === 'complete') {
         if (progressBar) progressBar.style.width = '100%';
         if (progressLabel) progressLabel.textContent = `✅ Done! Sent: ${data.sent} | Failed: ${data.failed}`;
         if (progressCount) progressCount.textContent = `${data.total} / ${data.total}`;
-        if (btn) { btn.disabled = false; btn.innerHTML = `<span class="material-symbols-outlined text-[18px]">send</span><span>Send Private Messages Now</span>`; }
+        if (btn) { btn.disabled = false; btn.style.display = 'flex'; }
+        if (cancelBtn) { cancelBtn.classList.add('hidden'); cancelBtn.disabled = false; cancelBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">stop_circle</span><span>Stop Sending</span>`; }
         if (statusDot) statusDot.classList.add('hidden');
         addLog(`✅ Private messaging complete — Sent: ${data.sent}, Failed: ${data.failed}`, 'success');
         showToast(`Private messages done! Sent: ${data.sent}, Failed: ${data.failed}`, 'success');

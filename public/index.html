@@ -1424,12 +1424,17 @@
                                 </div>
                             </div>
 
-                            <!-- Send Button -->
-                            <div class="pt-2 border-t border-outline-variant/20">
+                            <!-- Send & Cancel Buttons -->
+                            <div class="pt-2 border-t border-outline-variant/20 space-y-2">
                                 <button type="button" id="btn-send-private-absent" onclick="sendPrivateMessagesToAbsent()"
                                     class="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-rose-600 hover:brightness-110 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-rose-500/25 transition-all cursor-pointer">
                                     <span class="material-symbols-outlined text-[18px]">send</span>
                                     <span>Send Private Messages Now</span>
+                                </button>
+                                <button type="button" id="btn-cancel-private-absent" onclick="cancelPrivateAbsentMessages()"
+                                    class="hidden w-full py-2.5 px-4 rounded-2xl bg-surface-container hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer">
+                                    <span class="material-symbols-outlined text-[16px]">stop_circle</span>
+                                    <span>Stop Sending</span>
                                 </button>
                             </div>
                         </div>
